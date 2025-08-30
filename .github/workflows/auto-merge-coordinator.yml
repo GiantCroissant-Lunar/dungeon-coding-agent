@@ -7,9 +7,6 @@ on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
     branches: [main]
-  workflow_run:
-    workflows: ["Auto-Merge Coordination Agent"]
-    types: [completed]
 
 permissions:
   contents: write
