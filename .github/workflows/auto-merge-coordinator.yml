@@ -1,0 +1,389 @@
+name: Auto-Merge Coordination Agent
+
+# Fully automated PR review and merge workflow
+# No human intervention required - coordination agent handles everything
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [main]
+  workflow_run:
+    workflows: ["Auto-Merge Coordination Agent"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  checks: write
+
+jobs:
+  auto-coordination-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      continue-on-error: false
+      
+    - name: Build solution
+      id: build
+      run: |
+        if dotnet build --no-restore --configuration Release; then
+          echo "build_status=success" >> $GITHUB_OUTPUT
+          echo "build_message=✅ Build successful" >> $GITHUB_OUTPUT
+        else
+          echo "build_status=failure" >> $GITHUB_OUTPUT
+          echo "build_message=❌ Build failed" >> $GITHUB_OUTPUT
+        fi
+      continue-on-error: true
+      
+    - name: Run tests
+      id: tests
+      run: |
+        if dotnet test --no-build --configuration Release --verbosity normal; then
+          echo "test_status=success" >> $GITHUB_OUTPUT
+          echo "test_message=✅ All tests passing" >> $GITHUB_OUTPUT
+        else
+          echo "test_status=failure" >> $GITHUB_OUTPUT
+          echo "test_message=❌ Tests failing" >> $GITHUB_OUTPUT
+        fi
+      continue-on-error: true
+      
+    - name: Analyze RFC completion
+      id: rfc-analysis
+      run: |
+        # Extract RFC number from branch name
+        BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+        RFC_NUM=$(echo "$BRANCH_NAME" | grep -oP 'rfc\d+' | head -1 || echo "unknown")
+        
+        echo "rfc_number=$RFC_NUM" >> $GITHUB_OUTPUT
+        
+        # Find and check RFC file
+        RFC_PATTERN="docs/RFC/RFC${RFC_NUM#rfc}*.md"
+        RFC_FILES=$(find docs/RFC/ -name "RFC${RFC_NUM#rfc}*.md" 2>/dev/null || echo "")
+        
+        if [ -n "$RFC_FILES" ]; then
+          RFC_FILE=$(echo "$RFC_FILES" | head -1)
+          echo "rfc_file=$RFC_FILE" >> $GITHUB_OUTPUT
+          
+          # Check acceptance criteria completion
+          TOTAL_CRITERIA=$(grep -c '\- \[ \]' "$RFC_FILE" 2>/dev/null || echo "0")
+          COMPLETED_CRITERIA=$(grep -c '\- \[x\]' "$RFC_FILE" 2>/dev/null || echo "0")
+          
+          echo "total_criteria=$TOTAL_CRITERIA" >> $GITHUB_OUTPUT
+          echo "completed_criteria=$COMPLETED_CRITERIA" >> $GITHUB_OUTPUT
+          
+          # Check if RFC is marked complete
+          if grep -q "Status.*✅.*Complete\|Status.*Complete" "$RFC_FILE"; then
+            echo "rfc_status=complete" >> $GITHUB_OUTPUT
+          else
+            echo "rfc_status=incomplete" >> $GITHUB_OUTPUT
+          fi
+          
+          # Calculate completion percentage
+          if [ "$TOTAL_CRITERIA" -gt 0 ]; then
+            COMPLETION_PCT=$(( (COMPLETED_CRITERIA * 100) / TOTAL_CRITERIA ))
+            echo "completion_percentage=$COMPLETION_PCT" >> $GITHUB_OUTPUT
+          else
+            echo "completion_percentage=100" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "rfc_file=not_found" >> $GITHUB_OUTPUT
+          echo "rfc_status=unknown" >> $GITHUB_OUTPUT
+          echo "completion_percentage=0" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Check code quality
+      id: code-quality
+      run: |
+        QUALITY_SCORE=100
+        ISSUES=()
+        
+        # Check for test files
+        TEST_FILES=$(find tests/ -name "*.cs" 2>/dev/null | wc -l || echo "0")
+        if [ "$TEST_FILES" -eq 0 ]; then
+          ISSUES+=("No test files found")
+          QUALITY_SCORE=$((QUALITY_SCORE - 30))
+        fi
+        
+        # Check for TODOs/FIXMEs
+        TODO_COUNT=$(find src/ -name "*.cs" -exec grep -c "TODO\|FIXME\|HACK" {} + 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
+        if [ "$TODO_COUNT" -gt 0 ]; then
+          ISSUES+=("$TODO_COUNT TODO/FIXME comments found")
+          QUALITY_SCORE=$((QUALITY_SCORE - TODO_COUNT * 5))
+        fi
+        
+        # Check namespace usage
+        BAD_NAMESPACE=$(find src/ -name "*.cs" -exec grep -L "namespace DungeonCodingAgent" {} \; 2>/dev/null | wc -l || echo "0")
+        if [ "$BAD_NAMESPACE" -gt 0 ]; then
+          ISSUES+=("$BAD_NAMESPACE files with incorrect namespace")
+          QUALITY_SCORE=$((QUALITY_SCORE - BAD_NAMESPACE * 10))
+        fi
+        
+        # Ensure minimum quality score
+        if [ "$QUALITY_SCORE" -lt 0 ]; then
+          QUALITY_SCORE=0
+        fi
+        
+        echo "quality_score=$QUALITY_SCORE" >> $GITHUB_OUTPUT
+        printf -v ISSUES_LIST '%s; ' "${ISSUES[@]}"
+        echo "quality_issues=${ISSUES_LIST%%; }" >> $GITHUB_OUTPUT
+        
+    - name: Make merge decision
+      id: merge-decision
+      run: |
+        BUILD_OK="${{ steps.build.outputs.build_status }}"
+        TESTS_OK="${{ steps.tests.outputs.test_status }}"
+        RFC_STATUS="${{ steps.rfc-analysis.outputs.rfc_status }}"
+        COMPLETION_PCT="${{ steps.rfc-analysis.outputs.completion_percentage }}"
+        QUALITY_SCORE="${{ steps.code-quality.outputs.quality_score }}"
+        
+        # Merge criteria
+        CAN_MERGE=true
+        REASONS=()
+        
+        if [ "$BUILD_OK" != "success" ]; then
+          CAN_MERGE=false
+          REASONS+=("Build failing")
+        fi
+        
+        if [ "$TESTS_OK" != "success" ]; then
+          CAN_MERGE=false
+          REASONS+=("Tests failing")
+        fi
+        
+        if [ "$COMPLETION_PCT" -lt 80 ]; then
+          CAN_MERGE=false
+          REASONS+=("RFC only $COMPLETION_PCT% complete")
+        fi
+        
+        if [ "$QUALITY_SCORE" -lt 70 ]; then
+          CAN_MERGE=false
+          REASONS+=("Code quality score too low: $QUALITY_SCORE/100")
+        fi
+        
+        if [ "$CAN_MERGE" = true ]; then
+          echo "decision=merge" >> $GITHUB_OUTPUT
+          echo "reason=All criteria met - auto-merging" >> $GITHUB_OUTPUT
+        else
+          echo "decision=reject" >> $GITHUB_OUTPUT
+          printf -v REASON_LIST '%s, ' "${REASONS[@]}"
+          echo "reason=${REASON_LIST%, }" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Post coordination review
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const decision = '${{ steps.merge-decision.outputs.decision }}';
+          const reason = '${{ steps.merge-decision.outputs.reason }}';
+          const rfcNumber = '${{ steps.rfc-analysis.outputs.rfc_number }}';
+          const buildStatus = '${{ steps.build.outputs.build_message }}';
+          const testStatus = '${{ steps.tests.outputs.test_message }}';
+          const completionPct = '${{ steps.rfc-analysis.outputs.completion_percentage }}';
+          const qualityScore = '${{ steps.code-quality.outputs.quality_score }}';
+          const qualityIssues = '${{ steps.code-quality.outputs.quality_issues }}';
+          
+          const reviewBody = `## 🤖 Auto-Merge Coordination Agent Review
+          
+          **RFC**: ${rfcNumber.toUpperCase()}  
+          **Branch**: \`${{ github.event.pull_request.head.ref }}\`  
+          **Auto-Review**: ${new Date().toISOString()}
+          
+          ### 🔧 Build & Test Results
+          - **Build**: ${buildStatus}
+          - **Tests**: ${testStatus}
+          
+          ### 📋 RFC Completion Analysis
+          - **Progress**: ${completionPct}% of acceptance criteria completed
+          - **Status**: ${{ steps.rfc-analysis.outputs.rfc_status }}
+          
+          ### 🎯 Code Quality Score
+          - **Score**: ${qualityScore}/100
+          ${qualityIssues ? `- **Issues**: ${qualityIssues}` : '- **Issues**: None detected'}
+          
+          ### 🚦 Merge Decision
+          **Decision**: ${decision === 'merge' ? '✅ AUTO-MERGE APPROVED' : '❌ AUTO-MERGE REJECTED'}
+          **Reason**: ${reason}
+          
+          ${decision === 'merge' ? 
+            '🎉 This PR meets all automated quality criteria and will be merged automatically.' :
+            '⚠️ This PR does not meet merge criteria. Implementation agent should address the issues and update the PR.'
+          }
+          
+          ---
+          
+          *Fully automated review by Coordination Agent - no human intervention required*
+          `;
+          
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: reviewBody
+          });
+          
+          // Approve or request changes
+          const reviewAction = decision === 'merge' ? 'APPROVE' : 'REQUEST_CHANGES';
+          
+          await github.rest.pulls.createReview({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number,
+            body: decision === 'merge' ? 
+              '✅ Automated approval - all quality checks passed' :
+              '❌ Automated rejection - please address issues listed above',
+            event: reviewAction
+          });
+
+    - name: Auto-merge approved PRs
+      if: steps.merge-decision.outputs.decision == 'merge'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          try {
+            // Merge the PR
+            await github.rest.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              commit_title: `Auto-merge: ${{ github.event.pull_request.title }}`,
+              commit_message: `Automatically merged by Coordination Agent after passing all quality checks.
+              
+              ✅ Build: Success
+              ✅ Tests: Passing  
+              ✅ RFC: ${{ steps.rfc-analysis.outputs.completion_percentage }}% complete
+              ✅ Quality: ${{ steps.code-quality.outputs.quality_score }}/100
+              
+              Original PR: #${{ github.event.pull_request.number }}
+              Implemented by: @${{ github.event.pull_request.user.login }}`,
+              merge_method: 'squash'
+            });
+            
+            console.log('✅ PR successfully auto-merged');
+            
+            // Close the linked RFC issue
+            const rfcNumber = '${{ steps.rfc-analysis.outputs.rfc_number }}';
+            if (rfcNumber && rfcNumber !== 'unknown') {
+              // Find RFC implementation issue
+              const issues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: 'rfc-implementation'
+              });
+              
+              const rfcIssue = issues.data.find(issue => 
+                issue.title.toLowerCase().includes(rfcNumber.toLowerCase())
+              );
+              
+              if (rfcIssue) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: rfcIssue.number,
+                  state: 'closed'
+                });
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: rfcIssue.number,
+                  body: `✅ **RFC Implementation Complete**
+                  
+                  This RFC has been successfully implemented and merged to main branch.
+                  
+                  **Merged PR**: #${{ github.event.pull_request.number }}
+                  **Implementation**: ${{ github.event.pull_request.title }}
+                  **Completed**: ${new Date().toISOString()}
+                  
+                  🎉 Ready for next RFC or integration testing!`
+                });
+              }
+            }
+            
+          } catch (error) {
+            console.error('❌ Auto-merge failed:', error);
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ **Auto-merge failed**
+              
+              The Coordination Agent approved this PR but encountered an error during merge:
+              \`\`\`
+              ${error.message}
+              \`\`\`
+              
+              Manual intervention may be required.`
+            });
+          }
+          
+    - name: Handle rejected PRs
+      if: steps.merge-decision.outputs.decision == 'reject'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Add labels to help track status
+          await github.rest.issues.addLabels({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            labels: ['needs-work', 'auto-review-failed']
+          });
+          
+          console.log('❌ PR rejected by Coordination Agent - labeled for rework');
+          
+  # Monitor for updates to rejected PRs
+  monitor-rework:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+    
+    steps:
+    - name: Remove rework labels on update
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Remove labels when PR is updated
+          try {
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'needs-work'
+            });
+            
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'auto-review-failed'
+            });
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🔄 **PR Updated - Re-triggering Auto-Review**
+              
+              The implementation has been updated. Coordination Agent will re-evaluate this PR automatically.`
+            });
+            
+          } catch (error) {
+            console.log('Labels may not exist or already removed');
+          }

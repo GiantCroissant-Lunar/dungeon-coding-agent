@@ -120,4 +120,16 @@ See [docs/RFC/README.md](docs/RFC/README.md) for the complete RFC index and assi
 
 ---
 
-**🎯 Ready to Code?** Pick an RFC from [docs/RFC/README.md](docs/RFC/README.md) and start implementing! Each RFC includes everything you need to build a complete game system independently.
+## 🚀 How to Use with GitHub Copilot Coding Agent
+
+### **Quick Start for Fully Automated Agent Development:**
+1. **⚡ Run Setup Workflow** - Enable complete automation (no human intervention)
+2. **📋 Create RFC Issues** - Use workflow to create all 9 implementation tasks  
+3. **🤖 Assign to @copilot** - Implementation agents work autonomously
+4. **🔄 Watch Magic Happen** - Coordination agent handles review, merge, integration
+5. **🎮 Play Game** - Working dungeon crawler emerges from parallel agent collaboration
+
+**👉 See [GETTING-STARTED-WITH-COPILOT.md](GETTING-STARTED-WITH-COPILOT.md) for step-by-step instructions**
+
+### **For Human Developers:**
+Pick an RFC from [docs/RFC/README.md](docs/RFC/README.md) and start implementing! Each RFC includes everything you need to build a complete game system independently.

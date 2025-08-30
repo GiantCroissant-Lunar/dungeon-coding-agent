@@ -1,0 +1,29 @@
+# GitHub Actions workflow to set up branch protection rules
+# This ensures all Copilot work goes through feature branches and pull requests
+
+name: Setup Branch Protection
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/branch-protection.yml'
+
+jobs:
+  setup-branch-protection:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup branch protection for main
+      run: |
+        # Enable branch protection for main branch
+        gh api repos/${{ github.repository }}/branches/main/protection \
+          --method PUT \
+          --field required_status_checks='{"strict":true,"contexts":[]}' \
+          --field enforce_admins=false \
+          --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true}' \
+          --field restrictions=null \
+          --field allow_force_pushes=false \
+          --field allow_deletions=false
+      env:
+        GH_TOKEN: ${{ github.token }}

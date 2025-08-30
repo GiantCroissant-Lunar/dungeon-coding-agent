@@ -1,0 +1,104 @@
+name: Setup Automated Merge Environment
+
+# Sets up the repository for fully automated agent-to-agent workflow
+# No human intervention required after initial setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_auto_merge:
+        description: 'Enable fully automated merge workflow'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  administration: write
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  setup-automation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Configure repository settings for automation
+      run: |
+        echo "🤖 Setting up fully automated agent workflow..."
+        
+        # Enable auto-merge feature
+        gh api repos/${{ github.repository }} \
+          --method PATCH \
+          --field allow_auto_merge=true \
+          --field allow_squash_merge=true \
+          --field allow_merge_commit=false \
+          --field allow_rebase_merge=false \
+          --field delete_branch_on_merge=true
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Setup branch protection for agent workflow
+      run: |
+        echo "🔧 Configuring branch protection for automated workflow..."
+        
+        # Set up branch protection that allows automation
+        gh api repos/${{ github.repository }}/branches/main/protection \
+          --method PUT \
+          --field required_status_checks='{"strict":true,"contexts":["auto-coordination-review"]}' \
+          --field enforce_admins=false \
+          --field required_pull_request_reviews='{"required_approving_review_count":0,"dismiss_stale_reviews":true,"require_code_owner_reviews":false}' \
+          --field restrictions=null \
+          --field allow_force_pushes=false \
+          --field allow_deletions=false \
+          --field required_linear_history=false
+          
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Create workflow summary
+      run: |
+        cat > setup_summary.md << 'EOF'
+        ## 🎉 Automated Agent Workflow Setup Complete!
+        
+        ### ✅ Configured Settings:
+        - **Auto-merge**: Enabled for agent PRs
+        - **Branch protection**: Requires status checks but no human approval
+        - **Merge strategy**: Squash merge only (clean history)
+        - **Branch cleanup**: Automatic deletion after merge
+        
+        ### 🤖 Agent Workflow:
+        1. **Implementation Agent** (Copilot) creates feature branch & implements RFC
+        2. **Implementation Agent** opens pull request
+        3. **Coordination Agent** automatically reviews PR:
+           - ✅ Builds successfully
+           - ✅ Tests pass
+           - ✅ RFC completion verified (>80%)
+           - ✅ Code quality check (>70/100)
+        4. **Coordination Agent** auto-merges if all criteria met
+        5. **Coordination Agent** closes RFC issue and posts completion status
+        
+        ### 🚀 Ready for Fully Automated Development!
+        
+        **Next Steps**:
+        1. Create RFC issues (use workflow or script)
+        2. Assign issues to @copilot
+        3. Watch agents work autonomously!
+        
+        No human intervention required - agents handle everything from implementation to integration.
+        EOF
+        
+        gh issue create \
+          --title "🤖 Automated Agent Workflow Setup Complete" \
+          --body-file setup_summary.md \
+          --label "automation,setup-complete"
+          
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Post setup completion
+      run: |
+        echo "✅ Repository configured for fully automated agent workflow!"
+        echo "🎯 Agents can now work independently from RFC assignment to merge"
+        echo "📋 Next: Create RFC issues and assign to @copilot"
