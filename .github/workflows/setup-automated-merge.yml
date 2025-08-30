@@ -67,8 +67,7 @@ jobs:
         
         gh issue create \
           --title "🤖 Automated Agent Workflow Setup Complete" \
-          --body-file setup_summary.md \
-          --label "automation,setup-complete"
+          --body-file setup_summary.md
           
       env:
         GH_TOKEN: ${{ github.token }}

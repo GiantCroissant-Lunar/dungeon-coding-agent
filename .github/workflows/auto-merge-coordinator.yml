@@ -281,7 +281,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 state: 'open',
-                labels: 'rfc-implementation'
+                labels: ''
               });
               
               const rfcIssue = issues.data.find(issue => 
@@ -336,13 +336,8 @@ jobs:
       uses: actions/github-script@v7
       with:
         script: |
-          // Add labels to help track status
-          await github.rest.issues.addLabels({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-            labels: ['needs-work', 'auto-review-failed']
-          });
+          // Skip adding labels since they don't exist yet
+          console.log('PR marked for rework - would add labels if they existed');
           
           console.log('❌ PR rejected by Coordination Agent - labeled for rework');
           
@@ -356,21 +351,9 @@ jobs:
       uses: actions/github-script@v7
       with:
         script: |
-          // Remove labels when PR is updated
+          // Skip removing labels since they don't exist yet
           try {
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              name: 'needs-work'
-            });
-            
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              name: 'auto-review-failed'
-            });
+            console.log('Would remove labels if they existed');
             
             await github.rest.issues.createComment({
               issue_number: context.issue.number,

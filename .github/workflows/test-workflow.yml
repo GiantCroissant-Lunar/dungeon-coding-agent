@@ -41,8 +41,7 @@ jobs:
       run: |
         gh issue create \
           --title "✅ GitHub Actions Test - $(date)" \
-          --body "This is a test issue to verify GitHub Actions is working properly. Created at $(date)." \
-          --label "test"
+          --body "This is a test issue to verify GitHub Actions is working properly. Created at $(date)."
       env:
         GH_TOKEN: ${{ github.token }}
         

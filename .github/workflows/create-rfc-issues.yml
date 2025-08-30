@@ -38,7 +38,6 @@ jobs:
         gh issue create \
           --title "Implement RFC001: Core Game Loop & State Management" \
           --body-file .github/issue-templates/rfc001-body.md \
-          --label "rfc-implementation,copilot,high-priority,foundation" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -48,7 +47,6 @@ jobs:
         gh issue create \
           --title "Implement RFC002: Terminal.Gui Application Shell" \
           --body-file .github/issue-templates/rfc002-body.md \
-          --label "rfc-implementation,copilot,high-priority,foundation" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -58,7 +56,6 @@ jobs:
         gh issue create \
           --title "Implement RFC003: Map Generation & Rendering System" \
           --body-file .github/issue-templates/rfc003-body.md \
-          --label "rfc-implementation,copilot,medium-priority,gameplay" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -68,7 +65,6 @@ jobs:
         gh issue create \
           --title "Implement RFC004: Player Entity & Movement System" \
           --body-file .github/issue-templates/rfc004-body.md \
-          --label "rfc-implementation,copilot,medium-priority,gameplay" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -78,7 +74,6 @@ jobs:
         gh issue create \
           --title "Implement RFC006: Basic Inventory System" \
           --body-file .github/issue-templates/rfc006-body.md \
-          --label "rfc-implementation,copilot,medium-priority,feature" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -88,7 +83,6 @@ jobs:
         gh issue create \
           --title "Implement RFC007: Simple Message Log UI" \
           --body-file .github/issue-templates/rfc007-body.md \
-          --label "rfc-implementation,copilot,low-priority,ui" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -98,7 +92,6 @@ jobs:
         gh issue create \
           --title "Implement RFC008: Save Game Data System" \
           --body-file .github/issue-templates/rfc008-body.md \
-          --label "rfc-implementation,copilot,low-priority,feature" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -108,7 +101,6 @@ jobs:
         gh issue create \
           --title "Implement RFC009: Simple Enemy AI" \
           --body-file .github/issue-templates/rfc009-body.md \
-          --label "rfc-implementation,copilot,medium-priority,gameplay" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -118,7 +110,6 @@ jobs:
         gh issue create \
           --title "Implement RFC010: Health and Status Bar UI" \
           --body-file .github/issue-templates/rfc010-body.md \
-          --label "rfc-implementation,copilot,low-priority,ui" \
           --milestone "RFC Implementation Phase" || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
@@ -145,7 +136,6 @@ jobs:
         gh issue create \
           --title "🤖 RFC Issues Created - Ready for Copilot Assignment" \
           --body-file summary.md \
-          --label "meta,copilot-setup" \
           --milestone "RFC Implementation Phase" || echo "Summary issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
