@@ -63,9 +63,34 @@ jobs:
     - name: Analyze RFC completion
       id: rfc-analysis
       run: |
-        # Extract RFC number from branch name
+        # Extract RFC number from branch name or PR title
         BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
-        RFC_NUM=$(echo "$BRANCH_NAME" | grep -oP 'rfc\d+' | head -1 || echo "unknown")
+        PR_TITLE="${{ github.event.pull_request.title }}"
+        
+        # Try to extract from branch name first (feature/rfc001-*)
+        RFC_NUM=$(echo "$BRANCH_NAME" | grep -oP 'rfc\d+' | head -1 || echo "")
+        
+        # If not found in branch, try extracting from PR title (RFC001, RFC002, etc.)
+        if [ -z "$RFC_NUM" ]; then
+          RFC_NUM=$(echo "$PR_TITLE" | grep -oP 'RFC\d+' | head -1 | tr '[:upper:]' '[:lower:]' || echo "")
+        fi
+        
+        # If still not found, try extracting from issue number pattern (copilot/fix-3 -> issue 3 -> RFC001)
+        if [ -z "$RFC_NUM" ]; then
+          ISSUE_NUM=$(echo "$BRANCH_NAME" | grep -oP 'fix-\d+' | grep -oP '\d+' || echo "")
+          if [ ! -z "$ISSUE_NUM" ]; then
+            # Map common issue numbers to RFCs (issue 3=RFC001, issue 4=RFC002, etc.)
+            case "$ISSUE_NUM" in
+              3) RFC_NUM="rfc001" ;;
+              4) RFC_NUM="rfc002" ;;
+              5) RFC_NUM="rfc007" ;;
+              9) RFC_NUM="rfc008" ;;
+              *) RFC_NUM="unknown" ;;
+            esac
+          else
+            RFC_NUM="unknown"
+          fi
+        fi
         
         echo "rfc_number=$RFC_NUM" >> $GITHUB_OUTPUT
         
