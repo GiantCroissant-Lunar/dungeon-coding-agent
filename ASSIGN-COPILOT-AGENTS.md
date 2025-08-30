@@ -16,19 +16,29 @@ gh issue list --label="" --state=open
 4. **Assign to Copilot** (if available in your GitHub plan)
 5. **Add a comment**: `@copilot Please implement this RFC according to the specification in docs/RFC/RFC001-Core-Game-Loop.md`
 
-### **Option 2: Via Command Line (If Copilot CLI Available)**
+### **Option 2: Via Command Line**
 ```bash
-# Assign RFC001 to Copilot
-gh issue edit 3 --add-assignee copilot
+# Assign RFC001 to Copilot (use correct agent name)
+gh issue edit 3 --add-assignee copilot-swe-agent
 
-# Add implementation request comment
+# Add implementation request comment  
 gh issue comment 3 --body "@copilot Please implement RFC001: Core Game Loop according to the specification in docs/RFC/RFC001-Core-Game-Loop.md. Create a feature branch and implement with comprehensive tests."
 ```
 
-### **Option 3: Batch Assignment Script**
+### **Option 3: Automated Workflow (Recommended)**
 ```bash
-# Create a script to assign all RFCs (if you have multiple Copilot seats)
+# Use the GitHub Actions workflow to assign all RFCs at once
+gh workflow run "Assign RFC Issues to Copilot" --field issue_numbers="all" --field add_comment=true
+
+# Or assign specific issues
+gh workflow run "Assign RFC Issues to Copilot" --field issue_numbers="3,4,5" --field add_comment=true
+```
+
+### **Option 4: Batch Assignment Script**
+```bash
+# Manual script to assign multiple RFCs
 for issue_id in 3 4 5; do
+  gh issue edit $issue_id --add-assignee copilot-swe-agent
   gh issue comment $issue_id --body "@copilot Please implement this RFC according to the specification. Create feature branch, implement with tests, and open PR when ready."
 done
 ```
