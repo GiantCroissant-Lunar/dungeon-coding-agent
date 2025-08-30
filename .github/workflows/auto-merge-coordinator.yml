@@ -259,18 +259,12 @@ jobs:
             body: reviewBody
           });
           
-          // Approve or request changes
-          const reviewAction = decision === 'merge' ? 'APPROVE' : 'REQUEST_CHANGES';
-          
-          await github.rest.pulls.createReview({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            pull_number: context.issue.number,
-            body: decision === 'merge' ? 
-              '✅ Automated approval - all quality checks passed' :
-              '❌ Automated rejection - please address issues listed above',
-            event: reviewAction
-          });
+          // Skip approval - GitHub Actions cannot approve PRs by default
+          // Instead, proceed directly to merge if criteria met
+          console.log(decision === 'merge' ? 
+            '✅ All quality checks passed - proceeding to auto-merge' :
+            '❌ Quality checks failed - merge blocked'
+          );
 
     - name: Auto-merge approved PRs
       if: steps.merge-decision.outputs.decision == 'merge'
