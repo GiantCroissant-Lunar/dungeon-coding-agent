@@ -174,9 +174,19 @@ jobs:
         COMPLETION_PCT="${{ steps.rfc-analysis.outputs.completion_percentage }}"
         QUALITY_SCORE="${{ steps.code-quality.outputs.quality_score }}"
         
+        # Check if PR has merge conflicts
+        PR_MERGEABLE="${{ github.event.pull_request.mergeable }}"
+        echo "PR mergeable status: $PR_MERGEABLE"
+        
         # Merge criteria
         CAN_MERGE=true
         REASONS=()
+        
+        # Check for merge conflicts first
+        if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
+          CAN_MERGE=false
+          REASONS+=("PR has merge conflicts - triggering conflict resolution")
+        fi
         
         if [ "$BUILD_OK" != "success" ]; then
           CAN_MERGE=false
@@ -355,10 +365,33 @@ jobs:
       uses: actions/github-script@v7
       with:
         script: |
-          // Skip adding labels since they don't exist yet
-          console.log('PR marked for rework - would add labels if they existed');
+          const reason = '${{ steps.merge-decision.outputs.reason }}';
           
-          console.log('❌ PR rejected by Coordination Agent - labeled for rework');
+          // Check if rejection is due to merge conflicts
+          if (reason.includes('merge conflicts')) {
+            console.log('🔧 PR rejected due to merge conflicts - triggering conflict resolution agent');
+            
+            // Trigger conflict resolution workflow
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'conflict-resolution-agent.yml',
+                ref: 'main',
+                inputs: {
+                  pr_numbers: String(context.issue.number)
+                }
+              });
+              
+              console.log('✅ Conflict resolution agent triggered for PR #' + context.issue.number);
+            } catch (error) {
+              console.error('❌ Failed to trigger conflict resolution agent:', error.message);
+            }
+          } else {
+            console.log('❌ PR rejected for non-conflict reasons:', reason);
+          }
+          
+          console.log('📋 PR rejection handled by coordination agent');
           
   # Monitor for updates to rejected PRs
   monitor-rework:
