@@ -59,11 +59,20 @@ Instead of using scripts, you can trigger the GitHub Actions workflow:
 
 ### **Step 5: Setup Fully Automated Workflow**
 
-Enable complete agent-to-agent automation (no human intervention needed):
+Enable complete agent-to-agent automation (one-time manual setup):
 
-1. **Go to Actions tab** → **Run "Setup Automated Merge Environment"** workflow
-2. This configures the repository for **fully automated agent workflow**
-3. **Agents handle everything** - implementation, review, merge, and issue closure
+1. **Repository Settings** → **General**:
+   - ✅ Allow auto-merge
+   - ✅ Allow squash merging (disable merge commits and rebase)
+   - ✅ Automatically delete head branches
+
+2. **Repository Settings** → **Branches**:
+   - Add branch protection rule for `main`
+   - ✅ Require status checks to pass
+   - ✅ Require branches to be up to date
+   - ❌ Don't require pull request reviews (agents handle this)
+
+3. **Optional**: **Actions tab** → **Run "Setup Automated Merge Environment"** workflow (creates summary issue)
 
 ## 🤖 Fully Automated Agent Workflow
 
