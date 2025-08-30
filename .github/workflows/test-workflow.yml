@@ -1,0 +1,52 @@
+name: Test Workflow - Verify GitHub Actions
+
+# Simple test workflow to verify GitHub Actions is working
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Verify workflow is working
+      run: |
+        echo "🎉 GitHub Actions is working!"
+        echo "Repository: ${{ github.repository }}"
+        echo "Branch: ${{ github.ref }}"
+        echo "Actor: ${{ github.actor }}"
+        echo "Event: ${{ github.event_name }}"
+        
+    - name: Check repository structure
+      run: |
+        echo "📁 Repository contents:"
+        ls -la
+        echo ""
+        echo "🤖 RFC files:"
+        find docs/RFC -name "*.md" 2>/dev/null || echo "No RFC files found"
+        echo ""
+        echo "⚙️ Workflows:"
+        ls -la .github/workflows/
+        
+    - name: Create test issue
+      run: |
+        gh issue create \
+          --title "✅ GitHub Actions Test - $(date)" \
+          --body "This is a test issue to verify GitHub Actions is working properly. Created at $(date)." \
+          --label "test"
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Test completion
+      run: |
+        echo "✅ All tests passed!"
+        echo "🚀 Repository is ready for Copilot agent workflow"
