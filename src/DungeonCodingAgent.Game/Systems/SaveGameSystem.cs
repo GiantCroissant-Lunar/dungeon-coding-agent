@@ -8,7 +8,7 @@ namespace DungeonCodingAgent.Game.Systems;
 /// Save game system that handles persistent storage of game state to JSON files.
 /// Implements atomic save operations and comprehensive error handling.
 /// </summary>
-public class SaveGameSystem
+public class SaveGameSystem : IDisposable
 {
     private readonly string _saveDirectory;
     private readonly string _quickSaveFile;
