@@ -1,0 +1,123 @@
+name: Auto-Create RFC Issues on Push
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/RFC/**'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  create-rfc-issues:
+    name: Create RFC issues for updated/new RFC docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Detect changed RFC files
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          # Fallback for first push (no before)
+          if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            BEFORE=$(git rev-list --max-parents=0 HEAD | tail -n1)
+          fi
+          git fetch --no-tags --prune --depth=2 origin "+$AFTER:$AFTER" || true
+          CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" -- 'docs/RFC/*.md' | grep -E 'docs/RFC/RFC[0-9]{3}-.*\.md' | grep -v 'docs/RFC/README.md' || true)
+          echo "Changed RFC files:\n$CHANGED"
+          # Convert to JSON array for github-script
+          python3 - << 'PY'
+import json, os
+files = [l.strip() for l in os.popen("printf '%s' \"" + os.environ.get('CHANGED','') + "\" ").read().split('\n') if l.strip()]
+print('files<<JSON\n' + json.dumps(files) + '\nJSON')
+PY
+        env:
+          CHANGED: ${{ steps.detect.outputs.files }}
+        # Note: The python step prints to stdout with a special heredoc label consumed in next step
+
+      - name: Create issues for RFC docs (if missing)
+        uses: actions/github-script@v7
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const core = require('@actions/core');
+            const fs = require('fs');
+            // Recompute changed list robustly inside Node using git diff again
+            const { execSync } = require('child_process');
+            const before = process.env.GITHUB_EVENT_BEFORE || process.env['github.event.before'] || '';
+            const after = process.env.GITHUB_SHA || process.env['github.sha'];
+            let changed = '';
+            try {
+              changed = execSync(`git diff --name-only ${process.env.GITHUB_EVENT_BEFORE || process.env['GITHUB_EVENT_BEFORE'] || process.env.GITHUB_EVENT_BEFORE || ''} ${process.env.GITHUB_SHA} -- 'docs/RFC/*.md'`, { encoding: 'utf8' });
+            } catch { changed = ''; }
+            const files = changed.split('\n').map(s => s.trim()).filter(Boolean)
+              .filter(f => /^docs\/(RFC|rfc)\/RFC\d{3}-.+\.md$/.test(f) && f !== 'docs/RFC/README.md');
+            core.info(`Detected RFC files: ${files.join(', ')}`);
+            if (files.length === 0) {
+              core.info('No RFC files changed, skipping.');
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            async function issueExists(rfcNumber) {
+              const q = `repo:${owner}/${repo} in:title RFC${rfcNumber} type:issue state:open`;
+              const res = await github.rest.search.issuesAndPullRequests({ q });
+              return res.data.items.some(it => /\bRFC\d{3}\b/.test(it.title));
+            }
+
+            for (const file of files) {
+              const base = file.split('/').pop();
+              const match = base.match(/^RFC(\d{3})-(.+)\.md$/);
+              if (!match) continue;
+              const rfcNumber = match[1];
+              const titleText = match[2].replace(/-/g, ' ');
+              const issueTitle = `RFC${rfcNumber}: ${titleText} - Implementation`;
+
+              const exists = await issueExists(rfcNumber);
+              if (exists) {
+                core.info(`Issue for RFC${rfcNumber} already exists. Skipping.`);
+                continue;
+              }
+
+              // Build a simple body referencing the RFC document
+              const body = [
+                `This issue tracks implementation of RFC${rfcNumber}.`,
+                '',
+                `- RFC document: [${base}](./${file})`,
+                '- Labels: rfc-implementation, agent-work, ai-review-requested',
+                '',
+                'Acceptance Criteria:',
+                '- Satisfy all RFC acceptance criteria',
+                '- Tests implemented and passing',
+                '- Integrates with existing systems as specified'
+              ].join('\n');
+
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title: issueTitle,
+                body,
+                labels: ['rfc-implementation', 'agent-work', 'ai-review-requested']
+              });
+
+              core.info(`Created issue: ${issueTitle}`);
+            }
