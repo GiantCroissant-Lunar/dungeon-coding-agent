@@ -108,9 +108,58 @@ jobs:
   assign:
     name: Assign reconciled RFC issues (capacity-aware)
     needs: ping
-    uses: GiantCroissant-Lunar/dungeon-coding-agent/.github/workflows/assign-rfc-issues-to-agent.yml@main
-    with:
-      issue_numbers: all
-      labels: in-progress,agent-assigned
-      add_comment: true
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Capacity-aware assign and label
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Compute remaining capacity (max 3 active)
+          ACTIVE=$(gh --repo "${{ github.repository }}" issue list --state open --label rfc-implementation --label agent-assigned --label in-progress --json number --jq 'length')
+          ACTIVE=${ACTIVE:-0}
+          REMAINING=$((3 - ACTIVE))
+          echo "Active assigned RFCs: $ACTIVE. Remaining capacity: $REMAINING"
+          if [ "$REMAINING" -le 0 ]; then
+            echo "Capacity is full (3). Skipping."
+            exit 0
+          fi
+          # Candidates: open RFC implementation issues
+          IDS=$(gh --repo "${{ github.repository }}" issue list --state open --label rfc-implementation --json number --jq '.[].number' | tr '\n' ' ')
+          ASSIGNED=0
+          for id in $IDS; do
+            [ "$ASSIGNED" -ge "$REMAINING" ] && break
+            # Skip if already claimed or assigned
+            CLAIMED=$(gh --repo "${{ github.repository }}" issue view "$id" --json labels --jq '[.labels[].name] | index("agent-assigned") // null')
+            [ "$CLAIMED" != "null" ] && continue
+            ASSIGNEES_COUNT=$(gh --repo "${{ github.repository }}" issue view "$id" --json assignees --jq '.assignees | length')
+            [ "$ASSIGNEES_COUNT" -gt 0 ] && continue
+            # Apply labels
+            gh --repo "${{ github.repository }}" issue edit "$id" --add-label agent-assigned --add-label in-progress || true
+            # Comment guidance
+            TMP_FILE=$(mktemp)
+            cat > "$TMP_FILE" << 'EOF'
+Guidance for implementing this RFC:
+
+- Follow the RFC acceptance criteria and update checkboxes as you progress.
+- Create a feature branch per repo conventions.
+- Write and run tests locally; aim for meaningful coverage.
+- Open a draft PR early; request Gemini review by commenting `/gemini review`.
+- Keep commits small and descriptive.
+
+Refer to AI-REVIEWERS.md for Gemini Code Assist usage and labels.
+EOF
+            gh --repo "${{ github.repository }}" issue comment "$id" --body-file "$TMP_FILE" || true
+            rm -f "$TMP_FILE"
+            ASSIGNED=$((ASSIGNED + 1))
+            echo "Assigned issue #$id ($ASSIGNED/$REMAINING)"
+          done
+          echo "Done. Assigned: $ASSIGNED"
