@@ -25,6 +25,7 @@ jobs:
         run: |
           AUTHOR=${{ github.event.pull_request.user.login }}
           NUMBER=${{ github.event.pull_request.number }}
+          TYPE=$(jq -r '.pull_request.user.type' "$GITHUB_EVENT_PATH")
 
           echo "PR #$NUMBER by $AUTHOR"
 
@@ -34,6 +35,12 @@ jobs:
             gh pr edit "$NUMBER" --add-label copilot-pr || true
             echo "Adding 'agent-work' label..."
             gh pr edit "$NUMBER" --add-label agent-work || true
+          else
+            # For other agent/bot authors, apply 'agent-work'
+            if echo "$TYPE" | grep -iq "bot" || echo "$AUTHOR" | grep -Eiq '(agent|bot|ai)'; then
+              echo "Adding 'agent-work' label for non-Copilot agent..."
+              gh pr edit "$NUMBER" --add-label agent-work || true
+            fi
           fi
         env:
           GH_TOKEN: ${{ github.token }}
