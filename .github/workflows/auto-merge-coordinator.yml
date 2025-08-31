@@ -275,6 +275,9 @@ jobs:
           const completionPct = '${{ steps.rfc-analysis.outputs.completion_percentage }}';
           const qualityScore = '${{ steps.code-quality.outputs.quality_score }}';
           const qualityIssues = '${{ steps.code-quality.outputs.quality_issues }}';
+          const issuesLine = qualityIssues && qualityIssues.trim().length > 0
+            ? '- **Issues**: ' + qualityIssues
+            : '- **Issues**: None detected';
           
           const reviewBody = `## 🤖 Auto-Merge Coordination Agent Review
           
@@ -292,7 +295,7 @@ jobs:
           
           ### 🎯 Code Quality Score
           - **Score**: ${qualityScore}/100
-          ${qualityIssues ? `- **Issues**: ${qualityIssues}` : '- **Issues**: None detected'}
+          ${issuesLine}
           
           ### 🚦 Merge Decision
           **Decision**: ${decision === 'merge' ? '✅ AUTO-MERGE APPROVED' : '❌ AUTO-MERGE REJECTED'}
