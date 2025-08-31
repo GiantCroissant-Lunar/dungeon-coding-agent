@@ -102,3 +102,13 @@ jobs:
       - name: Echo success
         run: |
           echo "Reconcile workflow minimal job OK"
+
+  assign:
+    name: Assign reconciled RFC issues (capacity-aware)
+    needs: ping
+    uses: ./.github/workflows/assign-rfc-issues-to-agent.yml
+    with:
+      issue_numbers: all
+      labels: in-progress,agent-assigned
+      add_comment: true
+    secrets: inherit
