@@ -1,0 +1,82 @@
+name: Agent Status Dashboard
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 minutes
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate dashboard markdown
+        id: gen
+        run: |
+          set -e
+          echo "Generating dashboard..."
+
+          # Totals
+          TOTAL_RFCS=$(gh issue list --state all --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+          OPEN_RFCS=$(gh issue list --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+
+          # Copilot assignments
+          COPILOT_LOGIN=$(gh api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+          if [ -z "$COPILOT_LOGIN" ]; then
+            COPILOT_ASSIGNED=0
+          else
+            COPILOT_ASSIGNED=$(gh issue list --assignee "$COPILOT_LOGIN" --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+          fi
+
+          # PR stats
+          PRS_TOTAL=$(gh pr list --state open --json number | jq length)
+          PRS_COPILOT=$(gh pr list --state open --json number,author --jq '[.[] | select(.author.login | test("copilot"; "i"))] | length')
+
+          # Branches (best effort)
+          git ls-remote --heads https://github.com/${{ github.repository }}.git > /tmp/heads.txt
+          BRANCHES_COPILOT=$(cat /tmp/heads.txt | grep -Ei '(copilot|feature/rfc)' | wc -l | xargs)
+
+          cat > DASHBOARD.md <<'MD'
+          ## 🤖 Agent Status Dashboard
+
+          | Metric | Value |
+          |---|---:|
+          | Total RFC issues (all states) | ${TOTAL_RFCS} |
+          | Open RFC issues | ${OPEN_RFCS} |
+          | Open RFCs assigned to Copilot | ${COPILOT_ASSIGNED} |
+          | Open PRs (all) | ${PRS_TOTAL} |
+          | Open PRs by Copilot | ${PRS_COPILOT} |
+          | Remote branches (copilot/feature-rfc) | ${BRANCHES_COPILOT} |
+
+          ### Notes
+          - Copilot assignee detected as: ${COPILOT_LOGIN:-<not found>}
+          - This dashboard updates every 30 minutes.
+          MD
+
+          echo "done=1" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create or update dashboard issue
+        if: steps.gen.outputs.done == '1'
+        run: |
+          TITLE="🤖 Agent Status Dashboard"
+          # Try to find existing issue by exact title
+          ISSUE_NUM=$(gh issue list --state open --search "$TITLE in:title" --json number,title --jq ".[ ] | map(select(.title==\"$TITLE\")) | .[0].number")
+
+          if [ -z "$ISSUE_NUM" ] || [ "$ISSUE_NUM" = "null" ]; then
+            echo "Creating dashboard issue..."
+            gh issue create \
+              --title "$TITLE" \
+              --body-file DASHBOARD.md \
+              --label "status" || true
+          else
+            echo "Updating dashboard issue #$ISSUE_NUM..."
+            gh issue comment "$ISSUE_NUM" --body-file DASHBOARD.md
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

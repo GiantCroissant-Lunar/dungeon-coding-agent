@@ -53,6 +53,19 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         
+    - name: Resolve Copilot assignee login
+      id: resolve
+      run: |
+        echo "Resolving Copilot assignee login..."
+        CANDIDATE=$(gh api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+        if [ -z "$CANDIDATE" ]; then
+          echo " Could not find a Copilot assignee for this repository. Ensure Copilot Coding Agent is enabled and has access."
+          exit 1
+        fi
+        echo "copilot_login=$CANDIDATE" >> $GITHUB_OUTPUT
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
     - name: Assign Copilot and post guidance
       if: steps.find-conflicts.outputs.has_conflicts == 'true'
       run: |
@@ -81,9 +94,9 @@ jobs:
             continue
           fi
           
-          # Assign Copilot agent
-          echo "Assigning Copilot agent to PR #$pr_num..."
-          gh pr edit "$pr_num" --add-assignee "Copilot" || echo "Assignment may have failed or already exists"
+          # Assign Copilot agent (resolved dynamically)
+          echo "Assigning Copilot agent to PR #$pr_num as ${{ steps.resolve.outputs.copilot_login }}..."
+          gh pr edit "$pr_num" --add-assignee "${{ steps.resolve.outputs.copilot_login }}" || echo "Assignment may have failed or already exists"
           
           # Post conflict resolution guidance
           gh pr comment "$pr_num" --body "Conflict Resolution Agent - AUTOMATIC CONFLICT RESOLUTION NEEDED - This PR has merge conflicts that need to be resolved. Action Required: 1. Checkout branch: git checkout $BRANCH_NAME 2. Rebase against main: git rebase main 3. Resolve merge conflicts in the conflicted files 4. Push updated branch: git push --force-with-lease 5. Mark this PR ready for review (remove draft status) - Please work directly on this existing PR to resolve conflicts. Integration Note: Recent RFC001 merge added comprehensive game engine architecture. Ensure your changes integrate with the new GameEngine state management and ECS architecture."

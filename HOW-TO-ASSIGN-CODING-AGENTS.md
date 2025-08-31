@@ -98,11 +98,15 @@ Ready to start! 🚀
 
 ## 💻 Method 3: Command Line (gh CLI)
 
-### **Single Issue Assignment**
+### **Single Issue Assignment (dynamic assignee)**
 ```bash
+# Resolve the correct Copilot assignee
+COPILOT=$(gh api repos/OWNER/REPO/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+if [ -z "$COPILOT" ]; then echo "Copilot assignee not found" && exit 1; fi
+
 # Assign Copilot to specific issue
 ISSUE_NUM=3
-gh issue edit $ISSUE_NUM --add-assignee copilot-swe-agent
+gh issue edit $ISSUE_NUM --add-assignee "$COPILOT"
 
 # Add implementation request comment
 gh issue comment $ISSUE_NUM --body "@copilot Please implement this RFC according to the specification. Create feature branch, implement with tests, and open PR when ready."
@@ -111,7 +115,7 @@ gh issue comment $ISSUE_NUM --body "@copilot Please implement this RFC according
 gh issue view $ISSUE_NUM --json assignees --jq '.assignees[].login'
 ```
 
-### **Batch Assignment Script**
+### **Batch Assignment Script (dynamic assignee)**
 ```bash
 #!/bin/bash
 
@@ -119,6 +123,9 @@ gh issue view $ISSUE_NUM --json assignees --jq '.assignees[].login'
 RFC_ISSUES=(3 4 5 6 7 8 9 10 11)
 
 echo "🤖 Assigning RFC issues to Copilot..."
+
+COPILOT=$(gh api repos/OWNER/REPO/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+if [ -z "$COPILOT" ]; then echo "Copilot assignee not found" && exit 1; fi
 
 for issue_num in "${RFC_ISSUES[@]}"; do
   echo "📋 Processing Issue #$issue_num..."
@@ -138,7 +145,7 @@ for issue_num in "${RFC_ISSUES[@]}"; do
   
   if [ "$ASSIGNEE_COUNT" -gt 0 ]; then
     echo "  ℹ️ Already assigned - checking for Copilot"
-    COPILOT_ASSIGNED=$(gh issue view $issue_num --json assignees --jq '.assignees[] | select(.login == "Copilot")')
+    COPILOT_ASSIGNED=$(gh issue view $issue_num --json assignees --jq '.assignees[] | select(.login == "'"$COPILOT"'")')
     
     if [ ! -z "$COPILOT_ASSIGNED" ]; then
       echo "  ✅ Copilot already assigned"
@@ -147,7 +154,7 @@ for issue_num in "${RFC_ISSUES[@]}"; do
   fi
   
   # Assign Copilot
-  if gh issue edit $issue_num --add-assignee copilot-swe-agent; then
+  if gh issue edit $issue_num --add-assignee "$COPILOT"; then
     echo "  ✅ Successfully assigned Copilot"
     
     # Add implementation comment
@@ -192,8 +199,12 @@ assign_rfc_with_context() {
     RFC_FILE="docs/RFC/${RFC_NUM}.md"
   fi
   
+  # Resolve the correct Copilot assignee
+  COPILOT=$(gh api repos/OWNER/REPO/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+  if [ -z "$COPILOT" ]; then echo "Copilot assignee not found" && exit 1; fi
+  
   # Assign Copilot
-  gh issue edit $issue_num --add-assignee copilot-swe-agent
+  gh issue edit $issue_num --add-assignee "$COPILOT"
   
   # Create detailed implementation comment
   COMMENT="@copilot Please implement $RFC_NUM according to the specification in \`$RFC_FILE\`.

@@ -1,0 +1,76 @@
+name: Assign RFC Issues to Copilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_numbers:
+        description: 'Comma-separated issue numbers, or "all" for all open RFC issues'
+        required: true
+        default: 'all'
+        type: string
+      add_comment:
+        description: 'Add an implementation instruction comment to each issue'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Copilot assignee login
+        id: resolve
+        run: |
+          echo "Resolving Copilot assignee login..."
+          CANDIDATE=$(gh api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+          if [ -z "$CANDIDATE" ]; then
+            echo "❌ Could not find a Copilot assignee for this repository. Ensure Copilot Coding Agent is enabled and has access."
+            exit 1
+          fi
+          echo "copilot_login=$CANDIDATE" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Determine target issues
+        id: issues
+        run: |
+          INPUTS="${{ github.event.inputs.issue_numbers }}"
+          if [ "$INPUTS" = "all" ]; then
+            IDS=$(gh issue list --state open --label rfc-implementation --json number --jq '.[].number' | tr '\n' ',')
+          else
+            IDS=$(echo "$INPUTS" | tr -d ' ')
+          fi
+          IDS=${IDS%,}
+          if [ -z "$IDS" ]; then
+            echo "❌ No target issues found."
+            exit 1
+          fi
+          echo "ids=$IDS" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Assign issues to Copilot and optionally comment
+        run: |
+          IFS=',' read -ra ARR <<< "${{ steps.issues.outputs.ids }}"
+          for num in "${ARR[@]}"; do
+            num=$(echo "$num" | xargs)
+            if [ -z "$num" ]; then continue; fi
+            echo "Assigning issue #$num to ${{ steps.resolve.outputs.copilot_login }}"
+            gh issue edit "$num" --add-assignee "${{ steps.resolve.outputs.copilot_login }}" || echo "Assignment may have failed or already set"
+
+            if [ "${{ github.event.inputs.add_comment }}" = "true" ]; then
+              TITLE=$(gh issue view "$num" --json title --jq .title)
+              RFC=$(echo "$TITLE" | grep -o 'RFC[0-9]\+' || true)
+              COMMENT="@copilot Please implement this RFC according to its specification.\n\nRequirements:\n- Create a feature branch following repo conventions\n- Implement all acceptance criteria\n- Write comprehensive tests (>80% coverage)\n- Update RFC status through Draft → In Progress → Complete\n- Open a PR when ready"
+              gh issue comment "$num" --body "$COMMENT"
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}

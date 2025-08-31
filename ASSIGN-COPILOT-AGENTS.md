@@ -16,30 +16,41 @@ gh issue list --label="" --state=open
 4. **Assign to Copilot** (if available in your GitHub plan)
 5. **Add a comment**: `@copilot Please implement this RFC according to the specification in docs/RFC/RFC001-Core-Game-Loop.md`
 
-### **Option 2: Via Command Line**
+### **Option 2: Via Command Line (dynamic assignee)**
 ```bash
-# Assign RFC001 to Copilot (use correct agent name)
-gh issue edit 3 --add-assignee copilot-swe-agent
+# Resolve the correct Copilot assignee login for this repository
+COPILOT=$(gh api repos/OWNER/REPO/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+if [ -z "$COPILOT" ]; then
+  echo "Copilot assignee not found. Ensure Copilot Coding Agent is enabled and has access." && exit 1
+fi
 
-# Add implementation request comment  
+# Assign RFC001 to Copilot
+gh issue edit 3 --add-assignee "$COPILOT"
+
+# Add implementation request comment
 gh issue comment 3 --body "@copilot Please implement RFC001: Core Game Loop according to the specification in docs/RFC/RFC001-Core-Game-Loop.md. Create a feature branch and implement with comprehensive tests."
 ```
 
 ### **Option 3: Automated Workflow (Recommended)**
 ```bash
-# Use the GitHub Actions workflow to assign all RFCs at once
+# Use the GitHub Actions workflow (assign-rfc-issues-to-copilot.yml) to assign all RFCs at once
 gh workflow run "Assign RFC Issues to Copilot" --field issue_numbers="all" --field add_comment=true
 
 # Or assign specific issues
 gh workflow run "Assign RFC Issues to Copilot" --field issue_numbers="3,4,5" --field add_comment=true
 ```
 
-### **Option 4: Batch Assignment Script**
+### **Option 4: Batch Assignment Script (dynamic assignee)**
 ```bash
-# Manual script to assign multiple RFCs
+# Manual script to assign multiple RFCs with dynamic Copilot resolution
+COPILOT=$(gh api repos/OWNER/REPO/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+if [ -z "$COPILOT" ]; then
+  echo "Copilot assignee not found. Ensure Copilot Coding Agent is enabled and has access." && exit 1
+fi
+
 for issue_id in 3 4 5; do
-  gh issue edit $issue_id --add-assignee copilot-swe-agent
-  gh issue comment $issue_id --body "@copilot Please implement this RFC according to the specification. Create feature branch, implement with tests, and open PR when ready."
+  gh issue edit "$issue_id" --add-assignee "$COPILOT"
+  gh issue comment "$issue_id" --body "@copilot Please implement this RFC according to the specification. Create feature branch, implement with tests, and open PR when ready."
 done
 ```
 
