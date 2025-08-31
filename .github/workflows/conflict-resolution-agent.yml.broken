@@ -1,0 +1,328 @@
+name: Conflict Resolution Agent
+
+# Automatically resolves merge conflicts in Copilot agent PRs
+# Triggered when PRs become conflicted after other merges
+on:
+  # Monitor main branch changes that might cause conflicts
+  push:
+    branches: [main]
+  # Manual trigger for immediate conflict resolution
+  workflow_dispatch:
+    inputs:
+      pr_numbers:
+        description: 'Comma-separated PR numbers to resolve conflicts for (e.g., 8,10,11) or "all" for all conflicted PRs'
+        required: true
+        default: 'all'
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  detect-and-resolve-conflicts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout main branch
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ github.token }}
+        
+    - name: Setup Git
+      run: |
+        git config --global user.name "Conflict Resolution Agent"
+        git config --global user.email "conflict-resolver@users.noreply.github.com"
+        
+    - name: Find conflicted PRs
+      id: find-conflicts
+      run: |
+        echo "[SEARCH] Scanning for conflicted pull requests..."
+        
+        INPUT_PRS="${{ github.event.inputs.pr_numbers || 'all' }}"
+        
+        if [ "$INPUT_PRS" = "all" ]; then
+          echo "[LIST] Finding all conflicted PRs..."
+          CONFLICTED_PRS=$(gh pr list --state=open --json number,mergeable --jq '.[] | select(.mergeable == "CONFLICTING") | .number' | tr '\n' ',' | sed 's/,$//')
+          echo "Found conflicted PRs: $CONFLICTED_PRS"
+        else
+          echo "[LIST] Using specified PRs: $INPUT_PRS"
+          CONFLICTED_PRS="$INPUT_PRS"
+        fi
+        
+        echo "conflicted_prs=$CONFLICTED_PRS" >> $GITHUB_OUTPUT
+        
+        if [ -z "$CONFLICTED_PRS" ]; then
+          echo "✓ No conflicted PRs found - nothing to resolve"
+          echo "has_conflicts=false" >> $GITHUB_OUTPUT
+        else
+          echo "[!] Found conflicted PRs: $CONFLICTED_PRS"
+          echo "has_conflicts=true" >> $GITHUB_OUTPUT
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Resolve conflicts for each PR
+      if: steps.find-conflicts.outputs.has_conflicts == 'true'
+      run: |
+        echo "[TOOL] Starting conflict resolution process..."
+        
+        CONFLICTED_PRS="${{ steps.find-conflicts.outputs.conflicted_prs }}"
+        IFS=',' read -ra PR_ARRAY <<< "$CONFLICTED_PRS"
+        
+        SUCCESS_COUNT=0
+        FAILED_PRS=()
+        
+        for pr_num in "${PR_ARRAY[@]}"; do
+          pr_num=$(echo "$pr_num" | xargs)  # Trim whitespace
+          
+          if [ -z "$pr_num" ]; then
+            continue
+          fi
+          
+          echo
+          echo "[TARGET] Processing PR #$pr_num..."
+          
+          # Get PR details
+          PR_INFO=$(gh pr view "$pr_num" --json headRefName,headRepositoryOwner,title,author | jq -r '{branch: .headRefName, owner: .headRepositoryOwner.login, title: .title, author: .author.login}')
+          BRANCH_NAME=$(echo "$PR_INFO" | jq -r '.branch')
+          PR_TITLE=$(echo "$PR_INFO" | jq -r '.title')
+          PR_AUTHOR=$(echo "$PR_INFO" | jq -r '.author')
+          
+          echo "  Branch: $BRANCH_NAME"
+          echo "  Title: $PR_TITLE" 
+          echo "  Author: $PR_AUTHOR"
+          
+          # Skip if not a Copilot PR
+          if [[ ! "$PR_AUTHOR" == *"copilot"* ]]; then
+            echo "  ⚠️ Skipping - not a Copilot agent PR"
+            continue
+          fi
+          
+          # Ensure Copilot agent is assigned to handle conflict resolution
+          echo "  [BOT] Ensuring Copilot agent is assigned for conflict resolution..."
+          gh pr edit "$pr_num" --add-assignee "Copilot" || {
+            echo "  ✓ Copilot agent already assigned or assignment succeeded"
+          }
+          
+          # Fetch the PR branch
+          echo "  [FETCH] Fetching PR branch..."
+          git fetch origin "$BRANCH_NAME:conflict-resolution-$pr_num" || {
+            echo "  [X] Failed to fetch branch $BRANCH_NAME"
+            FAILED_PRS+=("$pr_num")
+            continue
+          }
+          
+          # Checkout the PR branch
+          git checkout "conflict-resolution-$pr_num" || {
+            echo "  [X] Failed to checkout branch"
+            FAILED_PRS+=("$pr_num")
+            continue
+          }
+          
+          # Attempt rebase against main
+          echo "  [SYNC] Attempting rebase against main..."
+          if git rebase origin/main; then
+            echo "  [✓] Rebase succeeded - no conflicts or auto-resolved"
+            
+            # Force push the rebased branch
+            echo "  [PUSH] Force pushing rebased branch..."
+            git push --force-with-lease origin "conflict-resolution-$pr_num:$BRANCH_NAME" || {
+              echo "  [X] Failed to push rebased branch"
+              FAILED_PRS+=("$pr_num")
+              git checkout main
+              git branch -D "conflict-resolution-$pr_num" 2>/dev/null || true
+              continue
+            }
+            
+            # Add success comment
+            gh pr comment "$pr_num" --body "[BOT] Conflict Resolution Agent
+
+[✓] Conflicts Resolved Successfully"
+
+The branch has been automatically rebased against the latest main branch. All merge conflicts have been resolved.
+
+Actions Taken:
+- Rebased branch against latest main
+- Resolved merge conflicts automatically  
+- Force-pushed updated branch
+- PR is now ready for coordination agent review
+
+Next Steps:
+The coordination agent will automatically review this PR once conflicts are resolved. If the PR is still in draft, mark it ready for review to trigger automated merge evaluation."
+            
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            echo "  [SUCCESS] PR #$pr_num successfully rebased and updated"
+            
+          else
+            echo "  [!] Rebase conflicts detected - attempting intelligent resolution..."
+            
+            # Get list of conflicted files
+            CONFLICTED_FILES=$(git diff --name-only --diff-filter=U)
+            echo "  [LIST] Conflicted files:"
+            echo "$CONFLICTED_FILES" | sed 's/^/    - /'
+            
+            # Abort the rebase
+            git rebase --abort
+            
+            # Try a merge-based approach for simpler conflicts
+            echo "  [SYNC] Attempting merge-based conflict resolution..."
+            git merge origin/main || {
+              echo "  [X] Automatic conflict resolution failed"
+              
+              # Check if conflicts are in code vs documentation
+              CODE_CONFLICTS=$(echo "$CONFLICTED_FILES" | grep -E '\.(cs|csproj)$' | wc -l)
+              DOC_CONFLICTS=$(echo "$CONFLICTED_FILES" | grep -E '\.(md|txt)$' | wc -l)
+              
+              git merge --abort
+              
+              # Add failure comment with guidance
+              gh pr comment "$pr_num" --body "[BOT] **Conflict Resolution Agent**
+
+[X] **Automatic Conflict Resolution Failed**
+
+This PR has merge conflicts that require manual intervention or Copilot agent assistance.
+
+**Conflicted Files:**
+\`\`\`
+$CONFLICTED_FILES
+\`\`\`
+
+**Conflict Analysis:**
+- 📄 Code conflicts: $CODE_CONFLICTS files
+- 📝 Documentation conflicts: $DOC_CONFLICTS files
+
+**Recommended Actions:**
+
+1. **For Copilot Agent (@$PR_AUTHOR):**
+   - Please rebase your branch against the latest main branch
+   - Resolve conflicts by integrating with recently merged changes
+   - Focus on merging with RFC001 changes in GameEngine.cs, GameState.cs, etc.
+
+2. **Manual Resolution:**
+   - Checkout branch: \`git checkout $BRANCH_NAME\`
+   - Rebase: \`git rebase main\` 
+   - Resolve conflicts in the listed files
+   - Force push: \`git push --force-with-lease\`
+
+**Integration Guidance:**
+Recent RFC001 merge added comprehensive game engine architecture. Ensure your changes integrate with:
+- New GameEngine state management
+- Updated ECS component structure  
+- Event system integration
+
+The coordination agent will automatically review once conflicts are resolved."
+              
+              # Automatically assign Copilot agent to handle conflict resolution
+              echo "  [BOT] Assigning Copilot agent to resolve conflicts..."
+              gh pr edit "$pr_num" --add-assignee "Copilot" || {
+                echo "  ⚠️ Could not assign Copilot agent (may already be assigned)"
+              }
+              
+              # Add direct conflict resolution request comment
+              gh pr comment "$pr_num" --body "[TOOL] **Direct Conflict Resolution Request** 
+
+@Copilot - Please resolve the merge conflicts directly in this PR by working on the existing branch \`$BRANCH_NAME\`.
+
+**Action Required:**
+1. Checkout branch \`$BRANCH_NAME\` (this PR's branch)
+2. Rebase against main: \`git rebase main\`  
+3. Resolve merge conflicts in the listed files above
+4. Push updated branch: \`git push --force-with-lease\`
+5. Mark this PR ready for review (remove draft status)
+
+**No need to create separate issues or PRs** - please work directly on this existing PR to resolve conflicts.
+
+RFC001 integration context: Ensure your changes integrate with the new GameEngine state management and ECS architecture."
+              
+              FAILED_PRS+=("$pr_num")
+            }
+          fi
+          
+          # Cleanup
+          git checkout main
+          git branch -D "conflict-resolution-$pr_num" 2>/dev/null || true
+          
+        done
+        
+        # Summary
+        echo
+        echo "[SUCCESS] Conflict Resolution Summary:"
+        echo "  [✓] Successfully resolved: $SUCCESS_COUNT PRs"
+        
+        if [ ${#FAILED_PRS[@]} -gt 0 ]; then
+          echo "  [X] Failed to resolve: ${FAILED_PRS[*]}"
+          echo "  [LIST] These PRs require manual intervention or Copilot agent assistance"
+        else
+          echo "  [ROCKET] All conflicts resolved successfully!"
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Trigger coordination agent for resolved PRs
+      if: steps.find-conflicts.outputs.has_conflicts == 'true'
+      run: |
+        echo "[BELL] Checking if any resolved PRs are ready for coordination agent review..."
+        
+        # Check PRs that were successfully resolved and are ready for review
+        READY_PRS=$(gh pr list --state=open --json number,mergeable,isDraft --jq '.[] | select(.mergeable == "MERGEABLE" and .isDraft == false) | .number' | tr '\n' ' ')
+        
+        if [ ! -z "$READY_PRS" ]; then
+          echo "[TARGET] Found PRs ready for coordination review: $READY_PRS"
+          echo "The coordination agent will automatically review these PRs on their next update."
+        else
+          echo "⏳ No PRs are ready for coordination review yet. PRs may need to be marked as ready for review."
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Post summary
+      if: always() && steps.find-conflicts.outputs.has_conflicts == 'true'
+      run: |
+        # Create summary issue
+        cat > conflict_summary.md << 'EOF'
+        ## [BOT] Conflict Resolution Agent Report
+        
+        **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Trigger**: ${{ github.event_name }}
+        
+        ### 📊 Conflict Resolution Results
+        
+        The Conflict Resolution Agent has processed conflicted pull requests and attempted automatic resolution.
+        
+        ### [SEARCH] Process Overview
+        1. **Detected** conflicted PRs using GitHub API
+        2. **Fetched** each conflicted branch 
+        3. **Attempted rebase** against latest main branch
+        4. **Resolved conflicts** automatically where possible
+        5. **Updated PR branches** with resolved conflicts
+        6. **Provided guidance** for manual resolution where needed
+        
+        ### [ROCKET] Next Steps
+        - [✓] Successfully resolved PRs will be reviewed by coordination agent
+        - [X] Failed PRs require Copilot agent or manual intervention  
+        - [SYNC] Process will re-run automatically when main branch is updated
+        
+        ### [TARGET] Parallel Development Benefits
+        This automated conflict resolution enables:
+        - **Parallel RFC implementation** without blocking
+        - **Automatic integration** of merged changes
+        - **Reduced development friction** for AI agents
+        - **Continuous integration** of parallel workstreams
+        
+        ---
+        *Automated conflict resolution for parallel AI development*
+        EOF
+        
+        gh issue create \
+          --title "[TOOL] Conflict Resolution Agent - $(date +%Y-%m-%d)" \
+          --body-file conflict_summary.md \
+          || echo "Failed to create summary issue"
+          
+      env:
+        GH_TOKEN: ${{ github.token }}
