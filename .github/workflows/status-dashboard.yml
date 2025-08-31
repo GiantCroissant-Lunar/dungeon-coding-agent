@@ -38,6 +38,8 @@ jobs:
           # PR stats
           PRS_TOTAL=$(gh pr list --state open --json number | jq length)
           PRS_COPILOT=$(gh pr list --state open --json number,author --jq '[.[] | select(.author.login | test("copilot"; "i"))] | length')
+          PRS_AI_REVIEW_REQ=$(gh pr list --state open --label ai-review-requested --json number | jq length)
+          PRS_AI_REVIEWED=$(gh pr list --state open --label ai-review --json number | jq length)
 
           # Branches (best effort)
           git ls-remote --heads https://github.com/${{ github.repository }}.git > /tmp/heads.txt
@@ -53,6 +55,8 @@ jobs:
           | Open RFCs assigned to Copilot | ${COPILOT_ASSIGNED} |
           | Open PRs (all) | ${PRS_TOTAL} |
           | Open PRs by Copilot | ${PRS_COPILOT} |
+          | Open PRs with AI review requested | ${PRS_AI_REVIEW_REQ} |
+          | Open PRs reviewed by AI | ${PRS_AI_REVIEWED} |
           | Remote branches (copilot/feature-rfc) | ${BRANCHES_COPILOT} |
 
           ### Notes
