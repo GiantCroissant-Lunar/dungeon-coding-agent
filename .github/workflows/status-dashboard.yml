@@ -1,0 +1,105 @@
+name: Agent Status Dashboard
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 minutes
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for git commands)
+        uses: actions/checkout@v4
+
+      - name: Generate dashboard markdown
+        id: gen
+        run: |
+          set -e
+          echo "Generating dashboard..."
+
+          # Totals
+          TOTAL_RFCS=$(gh --repo "${{ github.repository }}" issue list --state all --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+          OPEN_RFCS=$(gh --repo "${{ github.repository }}" issue list --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+
+          # Copilot assignments
+          COPILOT_LOGIN=$(gh --repo "${{ github.repository }}" api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+          if [ -z "$COPILOT_LOGIN" ]; then
+            COPILOT_ASSIGNED=0
+          else
+            COPILOT_ASSIGNED=$(gh --repo "${{ github.repository }}" issue list --assignee "$COPILOT_LOGIN" --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+          fi
+
+          # PR stats
+          PRS_TOTAL=$(gh --repo "${{ github.repository }}" pr list --state open --json number | jq length)
+          PRS_COPILOT=$(gh --repo "${{ github.repository }}" pr list --state open --json number,author --jq '[.[] | select(.author.login | test("copilot"; "i"))] | length')
+          PRS_AI_REVIEW_REQ=$(gh --repo "${{ github.repository }}" pr list --state open --label ai-review-requested --json number | jq length)
+          PRS_AI_REVIEWED=$(gh --repo "${{ github.repository }}" pr list --state open --label ai-review --json number | jq length)
+
+          # Branches (best effort)
+          git ls-remote --heads https://github.com/${{ github.repository }}.git > /tmp/heads.txt
+          BRANCHES_COPILOT=$(cat /tmp/heads.txt | grep -Ei '(copilot|feature/rfc)' | wc -l | xargs)
+
+          cat > DASHBOARD.md <<'MD'
+          ## 🤖 Agent Status Dashboard
+
+          | Metric | Value |
+          |---|---:|
+          | Total RFC issues (all states) | ${TOTAL_RFCS} |
+          | Open RFC issues | ${OPEN_RFCS} |
+          | Open RFCs assigned to Copilot | ${COPILOT_ASSIGNED} |
+          | Open PRs (all) | ${PRS_TOTAL} |
+          | Open PRs by Copilot | ${PRS_COPILOT} |
+          | Open PRs with AI review requested | ${PRS_AI_REVIEW_REQ} |
+          | Open PRs reviewed by AI | ${PRS_AI_REVIEWED} |
+          | Remote branches (copilot/feature-rfc) | ${BRANCHES_COPILOT} |
+
+          ### Notes
+          - Copilot assignee detected as: ${COPILOT_LOGIN:-<not found>}
+          - This dashboard updates every 30 minutes.
+          MD
+
+          echo "done=1" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Ensure 'status' label exists
+        if: steps.gen.outputs.done == '1'
+        run: |
+          gh label create status --color 0E8A16 --description "Status / Dashboard" 2>/dev/null || echo "label status exists"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create or update dashboard issue
+        if: steps.gen.outputs.done == '1'
+        run: |
+          TITLE="🤖 Agent Status Dashboard"
+          # Try to find existing issue by exact title
+          ISSUE_NUM=$(gh --repo "${{ github.repository }}" issue list --state open --json number,title --jq '[.[] | select(.title=="'"$TITLE"'")][0].number')
+
+          if [ -z "$ISSUE_NUM" ] || [ "$ISSUE_NUM" = "null" ]; then
+            echo "Creating dashboard issue..."
+            gh --repo "${{ github.repository }}" issue create \
+              --title "$TITLE" \
+              --body-file DASHBOARD.md \
+              --label "status" || true
+          else
+            echo "Updating dashboard issue #$ISSUE_NUM..."
+            gh --repo "${{ github.repository }}" issue comment "$ISSUE_NUM" --body-file DASHBOARD.md
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Print dashboard link
+        if: steps.gen.outputs.done == '1'
+        run: |
+          TITLE="🤖 Agent Status Dashboard"
+          URL=$(gh --repo "${{ github.repository }}" issue list --state open --json title,url --jq '.[] | select(.title=="'"$TITLE"'") | .url' | head -n1)
+          echo "Dashboard URL: ${URL:-<not found>}"
+        env:
+          GH_TOKEN: ${{ github.token }}

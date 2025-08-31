@@ -1,0 +1,59 @@
+name: AI Review Labeling
+
+on:
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure labels exist
+        run: |
+          gh --repo "${{ github.repository }}" label create ai-review --color 0E8A16 --description "PR reviewed by AI (e.g., Gemini)" 2>/dev/null || echo "label ai-review exists"
+          gh --repo "${{ github.repository }}" label create ai-review-requested --color D93F0B --description "AI review requested (/gemini)" 2>/dev/null || echo "label ai-review-requested exists"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Label when Gemini posts a review
+        if: github.event_name == 'pull_request_review'
+        run: |
+          NUMBER='${{ github.event.pull_request.number }}'
+          REVIEWER_LOGIN='${{ github.event.review.user.login }}'
+          REVIEWER_TYPE=$(jq -r '.review.user.type // ""' "$GITHUB_EVENT_PATH")
+          echo "Review by $REVIEWER_LOGIN (type=$REVIEWER_TYPE) on PR #$NUMBER"
+          if echo "$REVIEWER_LOGIN" | grep -Eiq '^gemini-code-assist(\[bot\])?$' || echo "$REVIEWER_LOGIN" | grep -iq gemini; then
+            echo "Adding ai-review label"
+            gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label ai-review || true
+          elif echo "$REVIEWER_TYPE" | grep -iq bot; then
+            echo "Non-Gemini bot review detected; skipping"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Label when /gemini is requested in comments
+        if: github.event_name == 'issue_comment'
+        run: |
+          BODY=$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")
+          # Only proceed for PR comments (issues that are pull requests)
+          IS_PR=$(jq -r '.issue.pull_request.url? // empty' "$GITHUB_EVENT_PATH")
+          if [ -z "$IS_PR" ]; then
+            echo "Comment is not on a PR; skipping"
+            exit 0
+          fi
+          NUMBER='${{ github.event.issue.number }}'
+          if echo "$BODY" | grep -Eiq '^/gemini( |$)'; then
+            echo "Adding ai-review-requested to PR #$NUMBER"
+            gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label ai-review-requested || true
+          else
+            echo "No /gemini command present; skipping"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

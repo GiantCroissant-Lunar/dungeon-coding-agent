@@ -1,0 +1,142 @@
+name: Issue-PR Linking Guide
+
+# Guides agents on proper issue-PR linking for automatic closure
+on:
+  pull_request:
+    types: [opened, edited]
+    
+permissions:
+  pull-requests: write
+  issues: read
+
+jobs:
+  check-issue-linking:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check PR description for issue linking
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const pr = context.payload.pull_request;
+          const prBody = pr.body || '';
+          const prTitle = pr.title || '';
+          
+          // Check if PR already has proper issue linking keywords
+          const linkingKeywords = [
+            'closes #', 'close #', 'closed #',
+            'fixes #', 'fix #', 'fixed #',
+            'resolves #', 'resolve #', 'resolved #'
+          ];
+          
+          const hasLinking = linkingKeywords.some(keyword => 
+            prBody.toLowerCase().includes(keyword.toLowerCase()) ||
+            prTitle.toLowerCase().includes(keyword.toLowerCase())
+          );
+          
+          // Extract RFC number from PR title or branch
+          const rfcMatch = prTitle.match(/RFC(\d+)/i) || pr.head.ref.match(/rfc(\d+)/i);
+          
+          if (!hasLinking && rfcMatch) {
+            const rfcNumber = rfcMatch[1].padStart(3, '0');
+            
+            // Find matching RFC issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+            
+            const matchingIssue = issues.data.find(issue => 
+              issue.title.toLowerCase().includes(`rfc${rfcNumber}`) ||
+              issue.title.toLowerCase().includes(`rfc ${rfcNumber}`)
+            );
+            
+            if (matchingIssue) {
+              const guidance = `## 🔗 Issue-PR Linking Guidance
+
+**Auto-Detection**: This PR appears to implement RFC${rfcNumber} but doesn't include automatic issue closing.
+
+### ✅ To Enable Automatic Issue Closing
+Add one of these lines to your PR description:
+- \`Closes #${matchingIssue.number}\`
+- \`Fixes #${matchingIssue.number}\`  
+- \`Resolves #${matchingIssue.number}\`
+
+### 🎯 Why This Matters
+When your PR is merged, GitHub will automatically:
+- Close the linked issue (#${matchingIssue.number})
+- Add a reference comment to the issue
+- Keep your project organized without manual intervention
+
+### 📋 Current Status
+- **Related Issue**: #${matchingIssue.number} - ${matchingIssue.title}
+- **Auto-Close Status**: ❌ Not configured
+- **Recommended Action**: Edit PR description to add closing keyword
+
+**Example PR Description Addition**:
+\`\`\`
+## Implementation Summary
+This PR implements ${matchingIssue.title}
+
+Closes #${matchingIssue.number}
+\`\`\`
+
+---
+*Automated guidance from Issue-PR Linking Guide*`;
+
+              await github.rest.issues.createComment({
+                issue_number: pr.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: guidance
+              });
+              
+              console.log(`Posted linking guidance for PR #${pr.number} -> Issue #${matchingIssue.number}`);
+            }
+          } else if (hasLinking) {
+            console.log(`PR #${pr.number} already has proper issue linking`);
+          } else {
+            console.log(`PR #${pr.number} doesn't appear to be RFC-related or no matching issue found`);
+          }
+          
+  validate-linking:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Validate issue linking effectiveness
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const pr = context.payload.pull_request;
+          const prBody = pr.body || '';
+          
+          // Extract all issue references
+          const issueRefs = prBody.match(/(closes?|fix(es)?|resolve[sd]?)\s+#(\d+)/gi);
+          
+          if (issueRefs) {
+            console.log('✅ Found issue linking keywords:');
+            issueRefs.forEach(ref => console.log(`  - ${ref}`));
+            
+            // Validate referenced issues exist and are open
+            for (const ref of issueRefs) {
+              const issueNum = ref.match(/#(\d+)/)[1];
+              try {
+                const issue = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: parseInt(issueNum)
+                });
+                
+                if (issue.data.state === 'open') {
+                  console.log(`  ✅ Issue #${issueNum} exists and is open`);
+                } else {
+                  console.log(`  ⚠️ Issue #${issueNum} is already ${issue.data.state}`);
+                }
+              } catch (error) {
+                console.log(`  ❌ Issue #${issueNum} not found or inaccessible`);
+              }
+            }
+          } else {
+            console.log('ℹ️ No issue linking keywords found in PR description');
+          }

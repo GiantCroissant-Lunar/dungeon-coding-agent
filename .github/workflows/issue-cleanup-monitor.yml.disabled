@@ -1,0 +1,263 @@
+name: Issue Cleanup Monitor
+
+# Monitors issues for cleanup needs and assigns Copilot agents to remove test/stale issues
+on:
+  schedule:
+    # Run every 6 hours to monitor for cleanup needs
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      cleanup_type:
+        description: 'Type of cleanup to perform'
+        required: true
+        default: 'test_issues'
+        type: choice
+        options:
+          - test_issues
+          - stale_issues
+          - all_cleanup
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  monitor-issues:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Identify test issues for cleanup
+      id: find-test-issues
+      run: |
+        echo "🔍 Scanning for test issues that need cleanup..."
+        
+        # Find test-related issues
+        TEST_ISSUES=$(gh issue list --state=open --json number,title,assignees --jq '.[] | select(.title | test("test|Test|TEST"; "i")) | {number, title, assignees: (.assignees | length)}')
+        
+        if [ ! -z "$TEST_ISSUES" ]; then
+          echo "test_issues_found=true" >> $GITHUB_OUTPUT
+          echo "Found test issues:"
+          echo "$TEST_ISSUES" | jq -r '"Issue #\(.number): \(.title) (assignees: \(.assignees))"'
+          
+          # Extract issue numbers for processing
+          TEST_ISSUE_NUMBERS=$(echo "$TEST_ISSUES" | jq -r '.number' | tr '\n' ',' | sed 's/,$//')
+          echo "test_issue_numbers=$TEST_ISSUE_NUMBERS" >> $GITHUB_OUTPUT
+        else
+          echo "test_issues_found=false" >> $GITHUB_OUTPUT
+          echo "✅ No test issues found requiring cleanup"
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Identify stale issues
+      id: find-stale-issues
+      run: |
+        echo "🕐 Scanning for stale issues (no activity >7 days)..."
+        
+        SEVEN_DAYS_AGO=$(date -d "7 days ago" -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Find issues with no recent activity
+        STALE_ISSUES=$(gh issue list --state=open --json number,title,updatedAt,assignees | jq --arg cutoff "$SEVEN_DAYS_AGO" '.[] | select(.updatedAt < $cutoff and (.assignees | length) == 0)')
+        
+        if [ ! -z "$STALE_ISSUES" ]; then
+          echo "stale_issues_found=true" >> $GITHUB_OUTPUT
+          echo "Found stale issues:"
+          echo "$STALE_ISSUES" | jq -r '"Issue #\(.number): \(.title) (last updated: \(.updatedAt))"'
+          
+          STALE_ISSUE_NUMBERS=$(echo "$STALE_ISSUES" | jq -r '.number' | tr '\n' ',' | sed 's/,$//')
+          echo "stale_issue_numbers=$STALE_ISSUE_NUMBERS" >> $GITHUB_OUTPUT
+        else
+          echo "stale_issues_found=false" >> $GITHUB_OUTPUT
+          echo "✅ No stale issues found"
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Create cleanup request for test issues
+      if: steps.find-test-issues.outputs.test_issues_found == 'true'
+      run: |
+        TEST_ISSUE_NUMBERS="${{ steps.find-test-issues.outputs.test_issue_numbers }}"
+        
+        # Check if cleanup issue already exists
+        EXISTING_CLEANUP=$(gh issue list --state=open --json number,title | jq -r '.[] | select(.title | contains("Test Issue Cleanup")) | .number' | head -1 || echo "")
+        
+        if [ ! -z "$EXISTING_CLEANUP" ]; then
+          echo "📝 Updating existing test cleanup issue #$EXISTING_CLEANUP"
+          
+          COMMENT="🔄 **Additional Test Issues Detected**
+
+**Detected**: $(date -u)  
+**Issues**: $TEST_ISSUE_NUMBERS
+
+The issue cleanup monitor has detected additional test issues that should be cleaned up:
+
+@copilot Please review and close the following test issues:
+$(echo "$TEST_ISSUE_NUMBERS" | tr ',' '\n' | sed 's/^/- Issue #/')"
+
+          gh issue comment $EXISTING_CLEANUP --body "$COMMENT"
+        else
+          echo "🆕 Creating new test cleanup issue"
+          
+          CLEANUP_BODY="## 🧹 Automated Test Issue Cleanup Request
+
+**Detection Time**: $(date -u)  
+**Monitor**: Issue Cleanup Monitor  
+**Issues Found**: $TEST_ISSUE_NUMBERS
+
+### 🎯 Cleanup Task
+The automated issue monitor has detected test-related issues that appear to be artifacts from testing workflows and should be cleaned up.
+
+### 📋 Issues to Review
+@copilot Please review and close the following test issues:
+$(echo "$TEST_ISSUE_NUMBERS" | tr ',' '\n' | sed 's/^/- Issue #/')
+
+### ✅ Cleanup Actions
+For each test issue:
+1. **Review Content**: Verify the issue is indeed a test artifact
+2. **Add Closure Comment**: Explain that it's being closed as a test artifact
+3. **Close Issue**: Mark as completed/resolved
+4. **Clean Labels**: Remove any unnecessary labels
+
+### 🚫 Important Guidelines
+- Only close issues that are clearly test artifacts
+- If unsure about an issue, add a comment asking for clarification
+- Preserve any issues that contain actual bug reports or valid requests
+- Document the cleanup in issue comments for transparency
+
+**Example closure comment**:
+> Closing this issue as it appears to be a test artifact from workflow testing. If this was intended as a legitimate issue, please reopen with additional context.
+
+Ready for cleanup! 🗑️"
+
+          CLEANUP_ISSUE=$(gh issue create \
+            --title "🧹 Test Issue Cleanup Request - $(date +%Y-%m-%d)" \
+            --body "$CLEANUP_BODY" \
+            --assignee "copilot" \
+            --label "maintenance,automated-detection,cleanup" | grep -o '#[0-9]*' | sed 's/#//' || echo "")
+          
+          echo "Created cleanup issue #$CLEANUP_ISSUE"
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Create cleanup request for stale issues
+      if: steps.find-stale-issues.outputs.stale_issues_found == 'true'
+      run: |
+        STALE_ISSUE_NUMBERS="${{ steps.find-stale-issues.outputs.stale_issue_numbers }}"
+        
+        STALE_CLEANUP_BODY="## 🕐 Automated Stale Issue Cleanup Request
+
+**Detection Time**: $(date -u)  
+**Monitor**: Issue Cleanup Monitor  
+**Stale Issues**: $STALE_ISSUE_NUMBERS
+
+### 🎯 Stale Issue Management
+The automated monitor has detected issues with no activity for >7 days and no assigned agents.
+
+### 📋 Issues to Review
+@copilot Please review and take action on these stale issues:
+$(echo "$STALE_ISSUE_NUMBERS" | tr ',' '\n' | sed 's/^/- Issue #/')
+
+### ✅ Recommended Actions
+For each stale issue:
+1. **Assess Relevance**: Is this still a valid concern?
+2. **Check Dependencies**: Does this block other work?
+3. **Action Decision**:
+   - **Close**: If no longer relevant or duplicate
+   - **Assign**: If needs implementation (assign to appropriate agent)
+   - **Update**: If needs more information or clarification
+
+### 🚫 Closure Guidelines
+Only close stale issues that are:
+- Duplicates of existing issues
+- No longer relevant due to code changes
+- Test artifacts or invalid requests
+- Superseded by newer issues
+
+**Do NOT close** issues that represent:
+- Valid feature requests
+- Unresolved bugs
+- RFC implementation tasks
+- Important architectural decisions
+
+Ready for stale issue management! ⏰"
+
+        STALE_CLEANUP_ISSUE=$(gh issue create \
+          --title "🕐 Stale Issue Review Request - $(date +%Y-%m-%d)" \
+          --body "$STALE_CLEANUP_BODY" \
+          --assignee "copilot" \
+          --label "maintenance,automated-detection,stale-issues" | grep -o '#[0-9]*' | sed 's/#//' || echo "")
+        
+        echo "Created stale issue cleanup request #$STALE_CLEANUP_ISSUE"
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Monitor RFC assignment status
+      run: |
+        echo "📋 Checking RFC implementation issue assignments..."
+        
+        # Find RFC issues without assignments
+        UNASSIGNED_RFCS=$(gh issue list --state=open --json number,title,assignees | jq -r '.[] | select(.title | contains("RFC") and (.assignees | length) == 0) | "Issue #\(.number): \(.title)"')
+        
+        if [ ! -z "$UNASSIGNED_RFCS" ]; then
+          echo "⚠️ Found unassigned RFC issues:"
+          echo "$UNASSIGNED_RFCS"
+          
+          RFC_ASSIGNMENT_BODY="## 🎯 RFC Assignment Monitor
+
+**Detection Time**: $(date -u)  
+**Monitor**: Issue Cleanup Monitor  
+
+### 📋 Unassigned RFC Issues
+The monitor detected RFC implementation issues that are not assigned to any agent:
+
+$UNASSIGNED_RFCS
+
+### 🤖 Assignment Needed
+These RFC issues should be assigned to coding agents for implementation. 
+
+**Recommended Actions**:
+1. Review each RFC issue
+2. Assign to @copilot for implementation  
+3. Add implementation request comments with clear guidance
+
+Use the RFC assignment workflow or manual assignment as appropriate."
+
+          gh issue create \
+            --title "🎯 RFC Assignment Alert - $(date +%Y-%m-%d)" \
+            --body "$RFC_ASSIGNMENT_BODY" \
+            --label "rfc,assignment-needed,automated-detection" || echo "Failed to create RFC assignment alert"
+        else
+          echo "✅ All RFC issues are properly assigned"
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Cleanup monitoring summary
+      run: |
+        echo "📊 Issue Cleanup Monitor Summary"
+        echo "================================"
+        
+        if [ "${{ steps.find-test-issues.outputs.test_issues_found }}" = "true" ]; then
+          echo "🧹 Test Issues: Found and created cleanup request"
+        else
+          echo "🧹 Test Issues: None found"
+        fi
+        
+        if [ "${{ steps.find-stale-issues.outputs.stale_issues_found }}" = "true" ]; then
+          echo "🕐 Stale Issues: Found and created review request"
+        else
+          echo "🕐 Stale Issues: None found"
+        fi
+        
+        echo "✅ Issue monitoring complete"
+        echo "📝 Copilot agents have been assigned to handle any cleanup needs"
