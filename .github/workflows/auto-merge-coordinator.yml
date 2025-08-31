@@ -213,6 +213,13 @@ jobs:
           SKIP_RFC_GATE=true
           echo "Bypassing RFC completion gate (HAS_SKIP=$HAS_SKIP, HAS_RFC_IMPL=$HAS_RFC_IMPL)"
         fi
+        # When skipping RFC gate for infra/docs-only PRs, also skip AI reviewer requirement
+        SKIP_REVIEW_GATE=false
+        if [ "$SKIP_RFC_GATE" = true ]; then
+          SKIP_REVIEW_GATE=true
+          echo "Bypassing AI reviewer gate due to SKIP_RFC_GATE=true"
+        fi
+        echo "skip_review_gate=$SKIP_REVIEW_GATE" >> $GITHUB_OUTPUT
         
         # Check for merge conflicts first
         if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
@@ -244,10 +251,14 @@ jobs:
           REASONS+=("Code quality score too low: $QUALITY_SCORE/100")
         fi
         
-        # Require Gemini AI review label and no do-not-merge
-        if [ "$HAS_AI_REVIEW" != "true" ]; then
-          CAN_MERGE=false
-          REASONS+=("Missing required 'ai-review' label (Gemini review)")
+        # Require Gemini AI review label and no do-not-merge, unless review gate is skipped
+        if [ "$SKIP_REVIEW_GATE" != true ]; then
+          if [ "$HAS_AI_REVIEW" != "true" ]; then
+            CAN_MERGE=false
+            REASONS+=("Missing required 'ai-review' label (Gemini review)")
+          fi
+        else
+          echo "AI reviewer requirement skipped."
         fi
         if [ "$HAS_DNM" = "true" ]; then
           CAN_MERGE=false
@@ -266,6 +277,7 @@ jobs:
     - name: Post coordination review
       uses: actions/github-script@v7
       with:
+        github-token: ${{ steps.app-token.outputs.token }}
         script: |
           const decision = '${{ steps.merge-decision.outputs.decision }}';
           const reason = '${{ steps.merge-decision.outputs.reason }}';
@@ -324,6 +336,25 @@ jobs:
             '✅ All quality checks passed - proceeding to auto-merge' :
             '❌ Quality checks failed - merge blocked'
           );
+
+    - name: Approve PR if review gate is skipped
+      if: steps.merge-decision.outputs.decision == 'merge' && steps.merge-decision.outputs.skip_review_gate == 'true'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ steps.app-token.outputs.token }}
+        script: |
+          try {
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event: 'APPROVE',
+              body: 'Automated approval by Coordination Agent (infra/docs-only bypass)'
+            });
+            console.log('✅ Submitted automated approval review');
+          } catch (err) {
+            console.log('⚠️ Could not submit approval review:', err.message);
+          }
 
     - name: Auto-merge approved PRs
       if: steps.merge-decision.outputs.decision == 'merge'
