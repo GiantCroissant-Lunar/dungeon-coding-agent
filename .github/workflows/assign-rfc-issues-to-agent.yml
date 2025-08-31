@@ -1,0 +1,103 @@
+name: Assign RFC Issues to Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_numbers:
+        description: 'Comma-separated issue numbers, or "all" for all open RFC implementation issues'
+        required: true
+        default: 'all'
+        type: string
+      assignee_login:
+        description: 'Login to assign (optional). If empty, only labels/comments are applied.'
+        required: false
+        type: string
+      labels:
+        description: 'Comma-separated labels to add (optional), e.g., in-progress,agent-assigned'
+        required: false
+        type: string
+      add_comment:
+        description: 'Add a guidance comment to each issue'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine target issues
+        id: issues
+        run: |
+          INPUTS='${{ github.event.inputs.issue_numbers }}'
+          if [ "$INPUTS" = "all" ]; then
+            IDS=$(gh --repo "${{ github.repository }}" issue list --state open --label rfc-implementation --json number --jq '.[].number' | tr '\n' ',')
+          else
+            IDS=$(echo "$INPUTS" | tr -d ' ')
+          fi
+          IDS=${IDS%,}
+          if [ -z "$IDS" ]; then
+            echo "❌ No target issues found."
+            exit 1
+          fi
+          echo "ids=$IDS" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Assign/label/comment issues
+        run: |
+          IFS=',' read -ra ARR <<< "${{ steps.issues.outputs.ids }}"
+          ASSIGNEE='${{ github.event.inputs.assignee_login }}'
+          LABELS='${{ github.event.inputs.labels }}'
+          ADD_COMMENT='${{ github.event.inputs.add_comment }}'
+
+          for num in "${ARR[@]}"; do
+            num=$(echo "$num" | xargs)
+            if [ -z "$num" ]; then continue; fi
+            echo "Processing issue #$num"
+
+            if [ -n "$ASSIGNEE" ]; then
+              echo " - Assigning @$ASSIGNEE"
+              gh --repo "${{ github.repository }}" issue edit "$num" --add-assignee "$ASSIGNEE" || echo "Assignment may have failed or already set"
+            fi
+
+            if [ -n "$LABELS" ]; then
+              # convert comma list to repeated --add-label flags
+              LABEL_FLAGS=()
+              IFS=',' read -ra LARR <<< "$LABELS"
+              for l in "${LARR[@]}"; do
+                l=$(echo "$l" | xargs)
+                [ -n "$l" ] && LABEL_FLAGS+=(--add-label "$l")
+              done
+              if [ ${#LABEL_FLAGS[@]} -gt 0 ]; then
+                echo " - Adding labels: $LABELS"
+                gh --repo "${{ github.repository }}" issue edit "$num" "${LABEL_FLAGS[@]}" || true
+              fi
+            fi
+
+            if [ "$ADD_COMMENT" = "true" ]; then
+              TITLE=$(gh --repo "${{ github.repository }}" issue view "$num" --json title --jq .title)
+              RFC=$(echo "$TITLE" | grep -o 'RFC[0-9]\+' || true)
+              read -r -d '' COMMENT << 'EOF'
+Guidance for implementing this RFC:
+
+- Follow the RFC acceptance criteria and update checkboxes as you progress.
+- Create a feature branch per repo conventions.
+- Write and run tests locally; aim for meaningful coverage.
+- Open a draft PR early; request Gemini review by commenting `/gemini review`.
+- Keep commits small and descriptive.
+
+Refer to AI-REVIEWERS.md for Gemini Code Assist usage and labels.
+EOF
+              gh --repo "${{ github.repository }}" issue comment "$num" --body "$COMMENT" || true
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}

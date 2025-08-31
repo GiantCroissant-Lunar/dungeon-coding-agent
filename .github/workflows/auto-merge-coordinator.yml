@@ -129,6 +129,18 @@ jobs:
           echo "completion_percentage=0" >> $GITHUB_OUTPUT
         fi
         
+    - name: Fetch PR state and labels
+      id: pr-state
+      run: |
+        NUMBER='${{ github.event.pull_request.number }}'
+        MERGEABLE=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json mergeable --jq .mergeable)
+        LABELS=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json labels --jq '[.labels[].name] | join(",")')
+        echo "mergeable_fresh=$MERGEABLE" >> $GITHUB_OUTPUT
+        if echo "$LABELS" | grep -q '\bai-review\b'; then echo "has_ai_review=true" >> $GITHUB_OUTPUT; else echo "has_ai_review=false" >> $GITHUB_OUTPUT; fi
+        if echo "$LABELS" | grep -q '\bdo-not-merge\b'; then echo "has_dnm=true" >> $GITHUB_OUTPUT; else echo "has_dnm=false" >> $GITHUB_OUTPUT; fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
     - name: Check code quality
       id: code-quality
       run: |
@@ -173,9 +185,11 @@ jobs:
         RFC_STATUS="${{ steps.rfc-analysis.outputs.rfc_status }}"
         COMPLETION_PCT="${{ steps.rfc-analysis.outputs.completion_percentage }}"
         QUALITY_SCORE="${{ steps.code-quality.outputs.quality_score }}"
+        HAS_AI_REVIEW='${{ steps.pr-state.outputs.has_ai_review }}'
+        HAS_DNM='${{ steps.pr-state.outputs.has_dnm }}'
         
-        # Check if PR has merge conflicts
-        PR_MERGEABLE="${{ github.event.pull_request.mergeable }}"
+        # Check if PR has merge conflicts (fresh read)
+        PR_MERGEABLE='${{ steps.pr-state.outputs.mergeable_fresh }}'
         echo "PR mergeable status: $PR_MERGEABLE"
         
         # Merge criteria
@@ -206,6 +220,16 @@ jobs:
         if [ "$QUALITY_SCORE" -lt 70 ]; then
           CAN_MERGE=false
           REASONS+=("Code quality score too low: $QUALITY_SCORE/100")
+        fi
+        
+        # Require Gemini AI review label and no do-not-merge
+        if [ "$HAS_AI_REVIEW" != "true" ]; then
+          CAN_MERGE=false
+          REASONS+=("Missing required 'ai-review' label (Gemini review)")
+        fi
+        if [ "$HAS_DNM" = "true" ]; then
+          CAN_MERGE=false
+          REASONS+=("PR has 'do-not-merge' label")
         fi
         
         if [ "$CAN_MERGE" = true ]; then
