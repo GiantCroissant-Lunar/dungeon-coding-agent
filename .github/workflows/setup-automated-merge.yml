@@ -1,5 +1,10 @@
 name: Setup Automated Merge Environment
 
+# Note:
+# - This workflow is informational and posts a setup summary.
+# - It does NOT toggle repository settings.
+# - Use `enable-auto-merge.yml` for actual repo setting changes (allow_auto_merge, delete_branch_on_merge).
+
 # Sets up the repository for fully automated agent-to-agent workflow
 # No human intervention required after initial setup
 
