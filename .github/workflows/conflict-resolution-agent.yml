@@ -102,6 +102,12 @@ jobs:
             continue
           fi
           
+          # Ensure Copilot agent is assigned to handle conflict resolution
+          echo "  🤖 Ensuring Copilot agent is assigned for conflict resolution..."
+          gh pr edit "$pr_num" --add-assignee "Copilot" || {
+            echo "  ✅ Copilot agent already assigned or assignment succeeded"
+          }
+          
           # Fetch the PR branch
           echo "  📥 Fetching PR branch..."
           git fetch origin "$BRANCH_NAME:conflict-resolution-$pr_num" || {
@@ -209,6 +215,28 @@ Recent RFC001 merge added comprehensive game engine architecture. Ensure your ch
 - Event system integration
 
 The coordination agent will automatically review once conflicts are resolved."
+              
+              # Automatically assign Copilot agent to handle conflict resolution
+              echo "  🤖 Assigning Copilot agent to resolve conflicts..."
+              gh pr edit "$pr_num" --add-assignee "Copilot" || {
+                echo "  ⚠️ Could not assign Copilot agent (may already be assigned)"
+              }
+              
+              # Add direct conflict resolution request comment
+              gh pr comment "$pr_num" --body "🔧 **Direct Conflict Resolution Request** 
+
+@Copilot - Please resolve the merge conflicts directly in this PR by working on the existing branch \`$BRANCH_NAME\`.
+
+**Action Required:**
+1. Checkout branch \`$BRANCH_NAME\` (this PR's branch)
+2. Rebase against main: \`git rebase main\`  
+3. Resolve merge conflicts in the listed files above
+4. Push updated branch: \`git push --force-with-lease\`
+5. Mark this PR ready for review (remove draft status)
+
+**No need to create separate issues or PRs** - please work directly on this existing PR to resolve conflicts.
+
+RFC001 integration context: Ensure your changes integrate with the new GameEngine state management and ECS architecture."
               
               FAILED_PRS+=("$pr_num")
             }
