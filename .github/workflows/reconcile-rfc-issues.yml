@@ -107,7 +107,7 @@ jobs:
   assign:
     name: Assign reconciled RFC issues (capacity-aware)
     needs: ping
-    uses: ./.github/workflows/assign-rfc-issues-to-agent.yml
+    uses: GiantCroissant-Lunar/dungeon-coding-agent/.github/workflows/assign-rfc-issues-to-agent.yml@main
     with:
       issue_numbers: all
       labels: in-progress,agent-assigned
