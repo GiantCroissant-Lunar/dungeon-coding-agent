@@ -1,5 +1,7 @@
 name: Assign RFC Issues to Agent
 
+# Ensures manual dispatch is available for immediate assignment runs.
+
 on:
   workflow_dispatch:
     inputs:
