@@ -9,6 +9,10 @@ on:
         required: true
         default: true
         type: boolean
+      assignee_login:
+        description: 'Optional login to assign all created RFC issues to (e.g., an agent account)'
+        required: false
+        type: string
 
 permissions:
   issues: write
@@ -25,7 +29,7 @@ jobs:
     - name: Create RFC Implementation Phase milestone (optional)
       if: ${{ inputs.create_milestone }}
       run: |
-        gh api repos/${{ github.repository }}/milestones \
+        gh --repo "${{ github.repository }}" api repos/${{ github.repository }}/milestones \
           --method POST \
           --field title="RFC Implementation Phase" \
           --field description="Implementation of all 9 RFC specifications for the dungeon crawler game" \
@@ -33,84 +37,112 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
     
+    - name: Prepare assignee flag
+      id: assign
+      run: |
+        ASSIGNEE='${{ inputs.assignee_login }}'
+        if [ -n "$ASSIGNEE" ]; then
+          echo "flag=--assignee \"$ASSIGNEE\"" >> $GITHUB_OUTPUT
+        else
+          echo "flag=" >> $GITHUB_OUTPUT
+        fi
+
     - name: Create RFC001 - Core Game Loop
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC001: Core Game Loop & State Management" \
           --body-file .github/issue-templates/rfc001-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC002 - Terminal Application Shell
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC002: Terminal.Gui Application Shell" \
           --body-file .github/issue-templates/rfc002-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC003 - Map Generation System
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC003: Map Generation & Rendering System" \
           --body-file .github/issue-templates/rfc003-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC004 - Player Movement System
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC004: Player Entity & Movement System" \
           --body-file .github/issue-templates/rfc004-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC006 - Basic Inventory
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC006: Basic Inventory System" \
           --body-file .github/issue-templates/rfc006-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC007 - Message Log UI
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC007: Simple Message Log UI" \
           --body-file .github/issue-templates/rfc007-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC008 - Save Game System
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC008: Save Game Data System" \
           --body-file .github/issue-templates/rfc008-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC009 - Simple Enemy AI
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC009: Simple Enemy AI" \
           --body-file .github/issue-templates/rfc009-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
         
     - name: Create RFC010 - Health Status Bar
       run: |
-        gh issue create \
+        gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC010: Health and Status Bar UI" \
           --body-file .github/issue-templates/rfc010-body.md \
-          --milestone "RFC Implementation Phase" || echo "Issue may already exist"
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ github.token }}
     
@@ -118,10 +150,10 @@ jobs:
       run: |
         echo "## 🎉 RFC Issues Created!" > summary.md
         echo "" >> summary.md
-        echo "All 9 RFC implementation issues have been created and are ready for GitHub Copilot Coding Agent assignment." >> summary.md
+        echo "All 9 RFC implementation issues have been created and are ready for agent assignment." >> summary.md
         echo "" >> summary.md
         echo "### 🚀 Next Steps:" >> summary.md
-        echo "1. **Assign to Copilot**: Go to each issue and assign to @copilot" >> summary.md
+        echo "1. **Assign to an Agent**: Optionally assign these to a bot/app or human reviewer" >> summary.md
         echo "2. **Start with Foundation**: Begin with RFC001 and RFC002 (high priority)" >> summary.md
         echo "3. **Monitor Progress**: Watch for draft pull requests from Copilot" >> summary.md
         echo "4. **Review and Iterate**: Provide feedback on Copilot's implementation" >> summary.md
@@ -131,10 +163,10 @@ jobs:
         echo "- **⚡ Core Gameplay**: RFC003, RFC004, RFC009" >> summary.md  
         echo "- **🎨 Features**: RFC006, RFC007, RFC008, RFC010" >> summary.md
         echo "" >> summary.md
-        echo "See [GETTING-STARTED-WITH-COPILOT.md](./GETTING-STARTED-WITH-COPILOT.md) for detailed instructions." >> summary.md
+        echo "See AI-REVIEWERS.md for Gemini usage and review policies." >> summary.md
         
-        gh issue create \
-          --title "🤖 RFC Issues Created - Ready for Copilot Assignment" \
+        gh --repo "${{ github.repository }}" issue create \
+          --title "🤖 RFC Issues Created - Ready for Assignment" \
           --body-file summary.md \
           --milestone "RFC Implementation Phase" || echo "Summary issue may already exist"
       env:
@@ -143,5 +175,5 @@ jobs:
     - name: Workflow completion message
       run: |
         echo "✅ All RFC issues created successfully!"
-        echo "🎯 Go to Issues tab to assign specific RFCs to @copilot"
-        echo "📖 See GETTING-STARTED-WITH-COPILOT.md for next steps"
+        echo "🎯 Go to Issues tab to assign specific RFCs to your preferred agent"
+        echo "📖 See AI-REVIEWERS.md for next steps"
