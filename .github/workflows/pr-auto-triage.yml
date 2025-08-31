@@ -3,6 +3,12 @@ name: PR Auto-Triage for Copilot
 on:
   pull_request:
     types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to triage manually'
+        required: true
+        type: string
 
 permissions:
   pull-requests: write
@@ -21,7 +27,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Label PRs authored by Copilot
+      - name: Label PRs authored by Copilot (PR event)
+        if: github.event_name == 'pull_request'
         run: |
           AUTHOR=${{ github.event.pull_request.user.login }}
           NUMBER=${{ github.event.pull_request.number }}
@@ -40,6 +47,31 @@ jobs:
             if echo "$TYPE" | grep -iq "bot" || echo "$AUTHOR" | grep -Eiq '(agent|bot|ai)'; then
               echo "Adding 'agent-work' label for non-Copilot agent..."
               gh pr edit "$NUMBER" --add-label agent-work || true
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Label PRs authored by Copilot (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          NUMBER='${{ inputs.pr_number }}'
+          echo "Fetching PR #$NUMBER details..."
+          AUTHOR=$(gh pr view "$NUMBER" --json author --jq .author.login)
+          TYPE=$(gh pr view "$NUMBER" --json author --jq '.author.__typename' 2>/dev/null || echo "")
+
+          echo "PR #$NUMBER by $AUTHOR (type=$TYPE)"
+
+          if echo "$AUTHOR" | grep -iq copilot; then
+            echo "Adding 'copilot-pr' + 'agent-work' labels..."
+            gh pr edit "$NUMBER" --add-label copilot-pr || true
+            gh pr edit "$NUMBER" --add-label agent-work || true
+          else
+            if echo "$AUTHOR" | grep -Eiq '(agent|bot|ai|app\/)' || echo "$TYPE" | grep -iq 'Bot\|App'; then
+              echo "Adding 'agent-work' label for non-Copilot agent/bot/app..."
+              gh pr edit "$NUMBER" --add-label agent-work || true
+            else
+              echo "Author appears human; no agent label applied."
             fi
           fi
         env:
