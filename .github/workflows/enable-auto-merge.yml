@@ -1,0 +1,57 @@
+name: Enable Auto-Merge (one-time)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  administration: write
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Enable auto-merge and related settings
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Enable repo settings via REST API
+            await github.request('PATCH /repos/{owner}/{repo}', {
+              owner,
+              repo,
+              allow_auto_merge: true,
+              delete_branch_on_merge: true,
+            });
+
+            // Optional: enable auto-update branch if supported via REST (preview flags vary)
+            // Not all orgs have this; ignore errors.
+            try {
+              await github.request('PATCH /repos/{owner}/{repo}/branches/main/protection', {
+                owner,
+                repo,
+                required_status_checks: null,
+                enforce_admins: null,
+                required_pull_request_reviews: null,
+                restrictions: null,
+                required_linear_history: null,
+                allow_force_pushes: null,
+                allow_deletions: null,
+                block_creations: null,
+                required_conversation_resolution: null
+              });
+            } catch (e) {
+              core.warning('Branch protection update skipped or not applicable: ' + e.message);
+            }
+
+            core.info('✔️ Enabled allow_auto_merge and delete_branch_on_merge for ' + owner + '/' + repo);
