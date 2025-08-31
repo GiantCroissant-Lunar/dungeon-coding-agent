@@ -1,5 +1,14 @@
 name: AI Review Labeling
 
+     # Purpose:
+     # - Ensures AI review-related labels exist and applies them when:
+     #   - Gemini (or configured AI reviewer) posts a PR review -> add `ai-review`
+     #   - A PR comment requests `/gemini` -> add `ai-review-requested`
+     # Relationship to other workflows:
+     # - `ai-review-required.yml` enforces presence of `ai-review` as a gating check.
+     # - `auto-merge-coordinator.yml` reads these labels as part of merge coordination.
+     # This workflow does NOT enforce blocking; it only manages labels.
+
 on:
   pull_request_review:
     types: [submitted]

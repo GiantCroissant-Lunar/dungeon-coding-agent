@@ -1,5 +1,13 @@
 name: Require Gemini AI Review
 
+     # Purpose:
+     # - Enforce that PRs have the `ai-review` label before proceeding.
+     # Complements:
+     # - `ai-review-labels.yml` which manages applying `ai-review`/`ai-review-requested` labels.
+     # - `auto-merge-coordinator.yml` which also checks labels during coordination.
+     # Note: This job is a focused, fast-fail check. Keep it, but avoid duplicating the same blocking
+     # message elsewhere to reduce noise.
+
 on:
   pull_request:
     types: [opened, synchronize, labeled, unlabeled, ready_for_review]
