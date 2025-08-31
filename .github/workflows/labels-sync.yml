@@ -1,0 +1,52 @@
+name: Sync Repository Labels
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure labels exist with desired color/description
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          REPO='${{ github.repository }}'
+
+          ensure_label() {
+            local name="$1"; local color="$2"; local desc="$3"
+            if gh --repo "$REPO" label list --json name --jq '.[].name' | grep -Fxq "$name"; then
+              echo "Updating label: $name"
+              gh --repo "$REPO" label edit "$name" --color "$color" --description "$desc" || true
+            else
+              echo "Creating label: $name"
+              gh --repo "$REPO" label create "$name" --color "$color" --description "$desc" || true
+            fi
+          }
+
+          ensure_label "ai-review-requested" "8a2be2" "Gemini review has been requested and is pending"
+          ensure_label "ai-review" "0e8a16" "Gemini review completed; OK to proceed if other checks pass"
+          ensure_label "do-not-merge" "b60205" "Block merges until this label is removed"
+          ensure_label "merge-conflict" "d73a4a" "PR currently has merge conflicts with the base branch"
+          ensure_label "rfc-implementation" "1d76db" "Issue tracks implementation work for an RFC"
+          ensure_label "in-progress" "fbca04" "Work is actively in progress"
+          ensure_label "agent-assigned" "0366d6" "Assigned to an automation agent/bot"
+
+      - name: Summary
+        run: |
+          echo "✅ Labels synced. Standard labels now available:"
+          echo "- ai-review-requested"
+          echo "- ai-review"
+          echo "- do-not-merge"
+          echo "- merge-conflict"
+          echo "- rfc-implementation"
+          echo "- in-progress"
+          echo "- agent-assigned"
