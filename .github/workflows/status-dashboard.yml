@@ -14,6 +14,9 @@ jobs:
   update-dashboard:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout (for git commands)
+        uses: actions/checkout@v4
+
       - name: Generate dashboard markdown
         id: gen
         run: |
@@ -58,6 +61,13 @@ jobs:
           MD
 
           echo "done=1" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Ensure 'status' label exists
+        if: steps.gen.outputs.done == '1'
+        run: |
+          gh label create status --color 0E8A16 --description "Status / Dashboard" 2>/dev/null || echo "label status exists"
         env:
           GH_TOKEN: ${{ github.token }}
 
