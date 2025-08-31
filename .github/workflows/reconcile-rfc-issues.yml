@@ -38,8 +38,6 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const core = require('@actions/core');
-            const fs = require('fs');
             const filesCsv = process.env['FILES'] || '';
             const files = filesCsv.split(',').map(s => s.trim()).filter(Boolean);
             if (files.length === 0) {
@@ -48,6 +46,16 @@ jobs:
             }
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            async function ensureLabel(name, color, description) {
+              try { await github.rest.issues.getLabel({ owner, repo, name }); }
+              catch {
+                try { await github.rest.issues.createLabel({ owner, repo, name, color, description }); }
+                catch (e) { core.warning(`ensureLabel(${name}) failed or exists: ${e.message}`); }
+              }
+            }
+            await ensureLabel('rfc-implementation','5319e7','Implementation tracked from RFC');
+            await ensureLabel('agent-work','1D76DB','Work authored by an AI agent');
+            await ensureLabel('ai-review-requested','8a2be2','AI review requested');
             async function issueExists(rfcNumber) {
               const q = `repo:${owner}/${repo} in:title RFC${rfcNumber} type:issue state:open`;
               const res = await github.rest.search.issuesAndPullRequests({ q });
@@ -75,14 +83,18 @@ jobs:
                 '- Tests implemented and passing',
                 '- Integrates with existing systems as specified'
               ].join('\n');
-              await github.rest.issues.create({
-                owner,
-                repo,
-                title: issueTitle,
-                body,
-                labels: ['rfc-implementation', 'agent-work', 'ai-review-requested']
-              });
-              core.info(`Created issue: ${issueTitle}`);
+              let attempt=0, lastErr;
+              while (attempt < 3) {
+                try {
+                  await github.rest.issues.create({ owner, repo, title: issueTitle, body, labels: ['rfc-implementation','agent-work','ai-review-requested'] });
+                  core.info(`Created issue: ${issueTitle}`);
+                  lastErr=null; break;
+                } catch (e) {
+                  lastErr=e; attempt++; core.warning(`issues.create failed (attempt ${attempt}): ${e.message}`);
+                  await new Promise(r=>setTimeout(r, 1000*attempt));
+                }
+              }
+              if (lastErr) core.setFailed(`Failed to create issue for RFC${rfcNumber}: ${lastErr.message}`);
             }
         env:
           FILES: ${{ steps.list.outputs.files }}
