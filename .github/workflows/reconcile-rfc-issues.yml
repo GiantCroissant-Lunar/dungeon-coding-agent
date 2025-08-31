@@ -1,8 +1,8 @@
-name: Nightly Reconcile RFC Issues
+name: Periodic Reconcile RFC Issues (every 3 hours)
 
 on:
   schedule:
-    - cron: '30 3 * * *'  # nightly at 03:30 UTC
+    - cron: '30 */3 * * *'  # every 3 hours at minute 30 (UTC)
   workflow_dispatch: {}
 
 permissions:
