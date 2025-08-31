@@ -2,18 +2,32 @@
 # Docs: https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
 
 have_fun: false
-ignore_patterns: []
+ignore_patterns:
+  - "**/vendor/**"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/*.min.js"
+  - "**/*.nupkg"
+  - "**/bin/**"
+  - "**/obj/**"
+  - "**/*.lock"
+  - "**/package-lock.json"
+  - "**/yarn.lock"
+  - "**/*.Designer.cs"
+  - "**/*.g.cs"
+  - "**/*.generated.*"
 
 code_review:
   disable: false
   # Only leave comments >= this severity
   comment_severity_threshold: MEDIUM
   # -1 means unlimited; adjust if reviews are too noisy
-  max_review_comments: -1
+  max_review_comments: 20
 
 pull_request_opened:
   # Post a short help message on PR open (slash commands)
-  help: false
+  help: true
   # Post a PR summary on open
   summary: true
   # Post an initial code review on open

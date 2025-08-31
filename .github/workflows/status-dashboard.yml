@@ -24,22 +24,22 @@ jobs:
           echo "Generating dashboard..."
 
           # Totals
-          TOTAL_RFCS=$(gh issue list --state all --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
-          OPEN_RFCS=$(gh issue list --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+          TOTAL_RFCS=$(gh --repo "${{ github.repository }}" issue list --state all --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+          OPEN_RFCS=$(gh --repo "${{ github.repository }}" issue list --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
 
           # Copilot assignments
-          COPILOT_LOGIN=$(gh api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
+          COPILOT_LOGIN=$(gh --repo "${{ github.repository }}" api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
           if [ -z "$COPILOT_LOGIN" ]; then
             COPILOT_ASSIGNED=0
           else
-            COPILOT_ASSIGNED=$(gh issue list --assignee "$COPILOT_LOGIN" --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
+            COPILOT_ASSIGNED=$(gh --repo "${{ github.repository }}" issue list --assignee "$COPILOT_LOGIN" --state open --json title --jq '.[] | select(.title | contains("RFC")) | .title' | wc -l | xargs)
           fi
 
           # PR stats
-          PRS_TOTAL=$(gh pr list --state open --json number | jq length)
-          PRS_COPILOT=$(gh pr list --state open --json number,author --jq '[.[] | select(.author.login | test("copilot"; "i"))] | length')
-          PRS_AI_REVIEW_REQ=$(gh pr list --state open --label ai-review-requested --json number | jq length)
-          PRS_AI_REVIEWED=$(gh pr list --state open --label ai-review --json number | jq length)
+          PRS_TOTAL=$(gh --repo "${{ github.repository }}" pr list --state open --json number | jq length)
+          PRS_COPILOT=$(gh --repo "${{ github.repository }}" pr list --state open --json number,author --jq '[.[] | select(.author.login | test("copilot"; "i"))] | length')
+          PRS_AI_REVIEW_REQ=$(gh --repo "${{ github.repository }}" pr list --state open --label ai-review-requested --json number | jq length)
+          PRS_AI_REVIEWED=$(gh --repo "${{ github.repository }}" pr list --state open --label ai-review --json number | jq length)
 
           # Branches (best effort)
           git ls-remote --heads https://github.com/${{ github.repository }}.git > /tmp/heads.txt
@@ -80,17 +80,26 @@ jobs:
         run: |
           TITLE="🤖 Agent Status Dashboard"
           # Try to find existing issue by exact title
-          ISSUE_NUM=$(gh issue list --state open --search "$TITLE in:title" --json number,title --jq ".[ ] | map(select(.title==\"$TITLE\")) | .[0].number")
+          ISSUE_NUM=$(gh --repo "${{ github.repository }}" issue list --state open --json number,title --jq '[.[] | select(.title=="'"$TITLE"'")][0].number')
 
           if [ -z "$ISSUE_NUM" ] || [ "$ISSUE_NUM" = "null" ]; then
             echo "Creating dashboard issue..."
-            gh issue create \
+            gh --repo "${{ github.repository }}" issue create \
               --title "$TITLE" \
               --body-file DASHBOARD.md \
               --label "status" || true
           else
             echo "Updating dashboard issue #$ISSUE_NUM..."
-            gh issue comment "$ISSUE_NUM" --body-file DASHBOARD.md
+            gh --repo "${{ github.repository }}" issue comment "$ISSUE_NUM" --body-file DASHBOARD.md
           fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Print dashboard link
+        if: steps.gen.outputs.done == '1'
+        run: |
+          TITLE="🤖 Agent Status Dashboard"
+          URL=$(gh --repo "${{ github.repository }}" issue list --state open --json title,url --jq '.[] | select(.title=="'"$TITLE"'") | .url' | head -n1)
+          echo "Dashboard URL: ${URL:-<not found>}"
         env:
           GH_TOKEN: ${{ github.token }}
