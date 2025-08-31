@@ -1,0 +1,82 @@
+name: Label PRs to bypass RFC completion gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label-bypass:
+    name: Apply/remove 'skip-rfc-check' based on PR scope
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine if PR should bypass RFC completion
+        id: decide
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            // Collect current labels
+            const labels = (context.payload.pull_request.labels || []).map(l => l.name);
+            const hasRFCImpl = labels.includes('rfc-implementation');
+            const SKIP_LABEL = 'skip-rfc-check';
+
+            // List changed files in the PR (first 300 files)
+            let files = [];
+            let page = 1;
+            while (true) {
+              const res = await github.rest.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 100, page });
+              files.push(...res.data.map(f => f.filename));
+              if (res.data.length < 100 || files.length >= 300) break;
+              page++;
+            }
+
+            // Heuristics: bypass when NOT an RFC implementation and files are infra/docs-only without docs/RFC/*
+            const touchesRFCDocs = files.some(f => /^docs\/(RFC|rfc)\//.test(f));
+            const touchesRFCSpecs = files.some(f => /^docs\/(RFC|rfc)\/RFC\d{3}-.+\.md$/.test(f));
+            const allInfra = files.every(f => (
+              /^\.github\//.test(f) ||
+              /^docs\//.test(f) ||
+              /^infra\//.test(f) ||
+              /^tools\//.test(f) ||
+              /^scripts\//.test(f) ||
+              /^README\.md$/.test(f) ||
+              /^LICENSE$/.test(f) ||
+              /^\.editorconfig$/.test(f)
+            ));
+
+            const shouldBypass = !hasRFCImpl && allInfra && !touchesRFCSpecs; // allow docs, but not RFC spec files
+
+            core.info(`labels=${labels.join(', ')}`);
+            core.info(`files[${files.length}]=${files.slice(0,10).join(', ')}${files.length>10?'...':''}`);
+            core.info(`hasRFCImpl=${hasRFCImpl} touchesRFCSpecs=${touchesRFCSpecs} allInfra=${allInfra} => shouldBypass=${shouldBypass}`);
+
+            // Ensure label exists
+            async function ensureLabel(name, color, description) {
+              try { await github.rest.issues.getLabel({ owner, repo, name }); }
+              catch {
+                try { await github.rest.issues.createLabel({ owner, repo, name, color, description }); }
+                catch (e) { core.warning(`ensureLabel(${name}) failed or exists: ${e.message}`); }
+              }
+            }
+            await ensureLabel(SKIP_LABEL, 'bbbbbb', 'Bypass RFC completion gate for auto-merge coordinator');
+
+            // Apply or remove skip label
+            const hasSkip = labels.includes(SKIP_LABEL);
+            if (shouldBypass && !hasSkip) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [SKIP_LABEL] });
+              core.info(`Added label: ${SKIP_LABEL}`);
+            } else if (!shouldBypass && hasSkip) {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: SKIP_LABEL }).catch(() => {});
+              core.info(`Removed label: ${SKIP_LABEL}`);
+            } else {
+              core.info('No label change needed.');
+            }
+
+            core.setOutput('shouldBypass', String(shouldBypass));
