@@ -1,0 +1,206 @@
+name: Workflow Failure Monitor
+
+# Monitors workflow failures and automatically assigns Copilot agents to investigate and fix issues
+on:
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  monitor-failures:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'failure'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Analyze workflow failure
+      id: analyze-failure
+      run: |
+        WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
+        WORKFLOW_ID="${{ github.event.workflow_run.id }}"
+        FAILURE_URL="${{ github.event.workflow_run.html_url }}"
+        BRANCH_NAME="${{ github.event.workflow_run.head_branch }}"
+        
+        echo "workflow_name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+        echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+        echo "failure_url=$FAILURE_URL" >> $GITHUB_OUTPUT
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        
+        # Get workflow file information
+        WORKFLOW_PATH=$(gh api repos/${{ github.repository }}/actions/workflows --jq ".workflows[] | select(.name == \"$WORKFLOW_NAME\") | .path" || echo "unknown")
+        echo "workflow_path=$WORKFLOW_PATH" >> $GITHUB_OUTPUT
+        
+        # Determine failure severity and action needed
+        case "$WORKFLOW_NAME" in
+          "Auto-Merge Coordination Agent"|"Simple Conflict Resolution Agent")
+            echo "severity=high" >> $GITHUB_OUTPUT
+            echo "action=immediate_fix" >> $GITHUB_OUTPUT
+            ;;
+          "Test Workflow"*)
+            echo "severity=medium" >> $GITHUB_OUTPUT
+            echo "action=cleanup_or_fix" >> $GITHUB_OUTPUT
+            ;;
+          *)
+            echo "severity=low" >> $GITHUB_OUTPUT
+            echo "action=investigate" >> $GITHUB_OUTPUT
+            ;;
+        esac
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Check for existing failure issues
+      id: check-existing
+      run: |
+        WORKFLOW_NAME="${{ steps.analyze-failure.outputs.workflow_name }}"
+        
+        # Search for existing issues about this workflow
+        EXISTING_ISSUES=$(gh issue list --state=open --json number,title | jq -r ".[] | select(.title | contains(\"Workflow Failure\") and contains(\"$WORKFLOW_NAME\")) | .number" || echo "")
+        
+        if [ ! -z "$EXISTING_ISSUES" ]; then
+          EXISTING_ISSUE=$(echo "$EXISTING_ISSUES" | head -1)
+          echo "existing_issue=$EXISTING_ISSUE" >> $GITHUB_OUTPUT
+          echo "create_new=false" >> $GITHUB_OUTPUT
+        else
+          echo "existing_issue=" >> $GITHUB_OUTPUT
+          echo "create_new=true" >> $GITHUB_OUTPUT
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Create workflow failure issue
+      if: steps.check-existing.outputs.create_new == 'true'
+      id: create-issue
+      run: |
+        WORKFLOW_NAME="${{ steps.analyze-failure.outputs.workflow_name }}"
+        WORKFLOW_PATH="${{ steps.analyze-failure.outputs.workflow_path }}"
+        FAILURE_URL="${{ steps.analyze-failure.outputs.failure_url }}"
+        BRANCH_NAME="${{ steps.analyze-failure.outputs.branch_name }}"
+        SEVERITY="${{ steps.analyze-failure.outputs.severity }}"
+        
+        # Generate issue title and body
+        TITLE="🔴 Workflow Failure: $WORKFLOW_NAME"
+        
+        BODY="## 🔴 Automated Workflow Failure Detection
+
+**Workflow**: \`$WORKFLOW_NAME\`  
+**Severity**: $SEVERITY  
+**Branch**: \`$BRANCH_NAME\`  
+**Failed Run**: [View Details]($FAILURE_URL)  
+**Workflow File**: \`$WORKFLOW_PATH\`
+
+### 🔍 Failure Analysis
+The workflow failure monitor detected that **$WORKFLOW_NAME** failed during execution.
+
+### 📋 Required Actions
+Based on the workflow type and failure pattern:
+- **High Severity**: Critical automation workflow - immediate investigation required
+- **Medium Severity**: Supporting workflow - needs cleanup or configuration fix  
+- **Low Severity**: Non-critical workflow - investigate when convenient
+
+### 🤖 Implementation Request
+@copilot Please investigate this workflow failure and implement the necessary fixes.
+
+**Tasks**:
+1. **Analyze Failure Logs**: Review the failed workflow run details
+2. **Identify Root Cause**: Determine what caused the workflow to fail
+3. **Implement Fix**: Make necessary changes to workflow configuration or code
+4. **Test Solution**: Verify the fix resolves the issue
+5. **Cleanup**: Remove duplicate or problematic workflows if needed
+
+**Guidelines**:
+- Check for YAML syntax errors, missing permissions, or configuration issues
+- Look for duplicate workflow triggers causing conflicts
+- Ensure workflow dependencies and environment setup are correct
+- Follow established patterns from working workflows in the repository
+
+Ready to debug and fix! 🔧"
+
+        # Create the issue
+        ISSUE_NUMBER=$(gh issue create \
+          --title "$TITLE" \
+          --body "$BODY" \
+          --assignee "copilot" \
+          --label "bug,workflow,automated-detection" | grep -o '#[0-9]*' | sed 's/#//' || echo "")
+        
+        echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Update existing failure issue
+      if: steps.check-existing.outputs.create_new == 'false'
+      run: |
+        EXISTING_ISSUE="${{ steps.check-existing.outputs.existing_issue }}"
+        FAILURE_URL="${{ steps.analyze-failure.outputs.failure_url }}"
+        WORKFLOW_NAME="${{ steps.analyze-failure.outputs.workflow_name }}"
+        
+        COMMENT="🔄 **Additional Failure Detected**
+
+**Workflow**: \`$WORKFLOW_NAME\`  
+**New Failure**: [View Details]($FAILURE_URL)  
+**Detected**: $(date -u)
+
+The workflow failure monitor detected another failure of this workflow. Please prioritize investigation and resolution.
+
+@copilot This workflow continues to fail - please investigate the pattern and implement a comprehensive fix."
+
+        gh issue comment $EXISTING_ISSUE --body "$COMMENT"
+        echo "Updated existing issue #$EXISTING_ISSUE with new failure information"
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Assess workflow cleanup needs
+      if: steps.analyze-failure.outputs.action == 'cleanup_or_fix'
+      run: |
+        WORKFLOW_NAME="${{ steps.analyze-failure.outputs.workflow_name }}"
+        WORKFLOW_PATH="${{ steps.analyze-failure.outputs.workflow_path }}"
+        
+        echo "🧹 Workflow cleanup assessment for: $WORKFLOW_NAME"
+        
+        # Check if this is a test or temporary workflow that might need removal
+        if [[ "$WORKFLOW_NAME" == *"Test"* ]] || [[ "$WORKFLOW_PATH" == *"test"* ]]; then
+          echo "This appears to be a test workflow that may need cleanup"
+          
+          # Count recent failures
+          RECENT_FAILURES=$(gh run list --workflow="$WORKFLOW_NAME" --status=failure --limit=5 --json conclusion | jq '. | length')
+          
+          if [ "$RECENT_FAILURES" -ge 3 ]; then
+            echo "⚠️ High failure rate detected - this workflow may need to be disabled or removed"
+          fi
+        fi
+        
+      env:
+        GH_TOKEN: ${{ github.token }}
+        
+    - name: Post monitoring summary
+      run: |
+        WORKFLOW_NAME="${{ steps.analyze-failure.outputs.workflow_name }}"
+        SEVERITY="${{ steps.analyze-failure.outputs.severity }}"
+        ACTION="${{ steps.analyze-failure.outputs.action }}"
+        
+        echo "📊 Workflow Failure Monitor Summary"
+        echo "=================================="
+        echo "Failed Workflow: $WORKFLOW_NAME"
+        echo "Severity Level: $SEVERITY"
+        echo "Recommended Action: $ACTION"
+        
+        if [ "${{ steps.check-existing.outputs.create_new }}" = "true" ]; then
+          ISSUE_NUM="${{ steps.create-issue.outputs.issue_number }}"
+          echo "Action Taken: Created issue #$ISSUE_NUM and assigned to Copilot"
+        else
+          EXISTING_NUM="${{ steps.check-existing.outputs.existing_issue }}"
+          echo "Action Taken: Updated existing issue #$EXISTING_NUM with new failure details"
+        fi
+        
+        echo "✅ Automated failure handling complete"

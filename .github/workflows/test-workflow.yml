@@ -3,9 +3,6 @@ name: Test Workflow - Verify GitHub Actions
 # Simple test workflow to verify GitHub Actions is working
 on:
   workflow_dispatch:
-  # Disabled push trigger to avoid duplicate workflow runs
-  # push:
-  #   branches: [main]
 
 permissions:
   contents: read
