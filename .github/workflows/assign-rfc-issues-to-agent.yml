@@ -25,9 +25,8 @@ on:
     inputs:
       issue_numbers:
         description: 'Comma-separated issue numbers, or "all" for all open RFC implementation issues'
-        required: true
+        required: false
         type: string
-        default: 'all'
       assignee_login:
         description: 'Login to assign (optional). If empty, only labels/comments are applied.'
         required: false
@@ -40,7 +39,6 @@ on:
         description: 'Add a guidance comment to each issue'
         required: false
         type: boolean
-        default: true
 
 permissions:
   issues: write
