@@ -1,8 +1,8 @@
-name: Nightly Reconcile RFC Issues
+name: Periodic Reconcile RFC Issues (every 3 hours)
 
 on:
   schedule:
-    - cron: '30 3 * * *'  # nightly at 03:30 UTC
+    - cron: '30 */3 * * *'  # every 3 hours at minute 30 (UTC)
   workflow_dispatch: {}
 
 permissions:
@@ -98,3 +98,13 @@ jobs:
             }
         env:
           FILES: ${{ steps.list.outputs.files }}
+
+  assign-reconciled-rfc-issues:
+    name: Auto-assign reconciled RFC issues (capacity-aware)
+    needs: reconcile
+    uses: GiantCroissant-Lunar/dungeon-coding-agent/.github/workflows/assign-rfc-issues-to-agent.yml@chore/auto-assign-rfc-capacity
+    with:
+      issue_numbers: all
+      labels: in-progress,agent-assigned
+      add_comment: true
+    secrets: inherit

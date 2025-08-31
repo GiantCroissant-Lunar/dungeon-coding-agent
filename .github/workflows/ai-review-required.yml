@@ -27,6 +27,11 @@ jobs:
           NUMBER='${{ github.event.pull_request.number }}'
           LABELS=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json labels --jq '[.labels[].name] | join(",")')
           echo "Labels: $LABELS"
+          # Honor bypass for infra/docs-only PRs
+          if echo "$LABELS" | grep -q '\bskip-rfc-check\b'; then
+            echo "Bypass active (skip-rfc-check present). Passing without requiring ai-review."
+            exit 0
+          fi
           if echo "$LABELS" | grep -q '\bai-review\b'; then
             echo "Gemini AI review label present."
             exit 0

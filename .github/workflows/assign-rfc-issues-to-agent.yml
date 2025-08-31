@@ -21,6 +21,24 @@ on:
         required: true
         default: true
         type: boolean
+  workflow_call:
+    inputs:
+      issue_numbers:
+        description: 'Comma-separated issue numbers, or "all" for all open RFC implementation issues'
+        required: false
+        type: string
+      assignee_login:
+        description: 'Login to assign (optional). If empty, only labels/comments are applied.'
+        required: false
+        type: string
+      labels:
+        description: 'Comma-separated labels to add (optional), e.g., in-progress,agent-assigned'
+        required: false
+        type: string
+      add_comment:
+        description: 'Add a guidance comment to each issue'
+        required: false
+        type: boolean
 
 permissions:
   issues: write
@@ -29,6 +47,9 @@ permissions:
 jobs:
   assign:
     runs-on: ubuntu-latest
+    concurrency:
+      group: assign-rfc-issues
+      cancel-in-progress: false
     steps:
       - name: Get GitHub App token
         id: app-token
@@ -39,59 +60,88 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Determine target issues
+      - name: Determine target issues and capacity
         id: issues
         run: |
-          INPUTS='${{ github.event.inputs.issue_numbers }}'
+          set -euo pipefail
+          # Determine global capacity: max 3 active (rfc-implementation + agent-assigned + in-progress)
+          ACTIVE=$(gh --repo "${{ github.repository }}" issue list --state open --label rfc-implementation --label agent-assigned --label in-progress --json number --jq 'length')
+          REMAINING=$((3 - ACTIVE))
+          if [ "$REMAINING" -le 0 ]; then
+            echo "capacity=0" >> $GITHUB_OUTPUT
+            echo "ids=" >> $GITHUB_OUTPUT
+            echo " Capacity is full (3). Skipping assignment."
+            exit 0
+          fi
+          INPUTS='${{ github.event.inputs.issue_numbers || inputs.issue_numbers }}'
+          if [ -z "$INPUTS" ]; then INPUTS='all'; fi
           if [ "$INPUTS" = "all" ]; then
             IDS=$(gh --repo "${{ github.repository }}" issue list --state open --label rfc-implementation --json number --jq '.[].number' | tr '\n' ',')
           else
             IDS=$(echo "$INPUTS" | tr -d ' ')
           fi
           IDS=${IDS%,}
-          if [ -z "$IDS" ]; then
-            echo "❌ No target issues found."
-            exit 1
-          fi
           echo "ids=$IDS" >> $GITHUB_OUTPUT
+          echo "capacity=$REMAINING" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Assign/label/comment issues
         run: |
           IFS=',' read -ra ARR <<< "${{ steps.issues.outputs.ids }}"
-          ASSIGNEE='${{ github.event.inputs.assignee_login }}'
-          LABELS='${{ github.event.inputs.labels }}'
-          ADD_COMMENT='${{ github.event.inputs.add_comment }}'
+          CAP=${{ steps.issues.outputs.capacity || 0 }}
+          if [ -z "$CAP" ]; then CAP=0; fi
+          if [ "$CAP" -le 0 ]; then
+            echo "No available capacity. Nothing to assign."
+            exit 0
+          fi
+          ASSIGNEE='${{ github.event.inputs.assignee_login || inputs.assignee_login }}'
+          LABELS='${{ github.event.inputs.labels || inputs.labels }}'
+          ADD_COMMENT='${{ github.event.inputs.add_comment || inputs.add_comment }}'
 
           for num in "${ARR[@]}"; do
+            if [ "$CAP" -le 0 ]; then
+              echo "Capacity reached. Stopping assignment loop."
+              break
+            fi
             num=$(echo "$num" | xargs)
             if [ -z "$num" ]; then continue; fi
             echo "Processing issue #$num"
-
+            # Skip if not RFC implementation
+            HAS_RFC_LABEL=$(gh --repo "${{ github.repository }}" issue view "$num" --json labels --jq '[.labels[].name] | index("rfc-implementation") | not')
+            if [ "$HAS_RFC_LABEL" = "true" ]; then
+              echo " - Skipping #$num (not an rfc-implementation issue)"
+              continue
+            fi
+            # Skip if already claimed or has assignees
+            CLAIMED=$(gh --repo "${{ github.repository }}" issue view "$num" --json labels --jq '[.labels[].name] | index("agent-assigned") // false')
+            ASSIGNEES_COUNT=$(gh --repo "${{ github.repository }}" issue view "$num" --json assignees --jq '.assignees | length')
+            if [ "$CLAIMED" != "false" ] || [ "$ASSIGNEES_COUNT" -gt 0 ]; then
+              echo " - Skipping #$num (already claimed or has assignees)"
+              continue
+            fi
+            # Optional human assignment
             if [ -n "$ASSIGNEE" ]; then
               echo " - Assigning @$ASSIGNEE"
               gh --repo "${{ github.repository }}" issue edit "$num" --add-assignee "$ASSIGNEE" || echo "Assignment may have failed or already set"
             fi
-
+            # Apply labels (ensure agent-assigned and in-progress present)
+            LABEL_FLAGS=(--add-label agent-assigned --add-label in-progress)
             if [ -n "$LABELS" ]; then
-              # convert comma list to repeated --add-label flags
-              LABEL_FLAGS=()
               IFS=',' read -ra LARR <<< "$LABELS"
               for l in "${LARR[@]}"; do
                 l=$(echo "$l" | xargs)
                 [ -n "$l" ] && LABEL_FLAGS+=(--add-label "$l")
               done
-              if [ ${#LABEL_FLAGS[@]} -gt 0 ]; then
-                echo " - Adding labels: $LABELS"
-                gh --repo "${{ github.repository }}" issue edit "$num" "${LABEL_FLAGS[@]}" || true
-              fi
             fi
-
+            echo " - Adding labels: ${LABEL_FLAGS[*]}"
+            gh --repo "${{ github.repository }}" issue edit "$num" "${LABEL_FLAGS[@]}" || true
+            # Comment guidance
             if [ "$ADD_COMMENT" = "true" ]; then
               TITLE=$(gh --repo "${{ github.repository }}" issue view "$num" --json title --jq .title)
               RFC=$(echo "$TITLE" | grep -o 'RFC[0-9]\+' || true)
-              read -r -d '' COMMENT << 'EOF'
+              TMP_FILE=$(mktemp)
+              cat > "$TMP_FILE" << 'EOF'
 Guidance for implementing this RFC:
 
 - Follow the RFC acceptance criteria and update checkboxes as you progress.
@@ -102,8 +152,10 @@ Guidance for implementing this RFC:
 
 Refer to AI-REVIEWERS.md for Gemini Code Assist usage and labels.
 EOF
-              gh --repo "${{ github.repository }}" issue comment "$num" --body "$COMMENT" || true
+              gh --repo "${{ github.repository }}" issue comment "$num" --body-file "$TMP_FILE" || true
+              rm -f "$TMP_FILE"
             fi
+            CAP=$((CAP - 1))
           done
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
