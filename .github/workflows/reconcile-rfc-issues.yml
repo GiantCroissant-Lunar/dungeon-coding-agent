@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: List RFC docs
         id: list
         shell: bash
@@ -25,6 +26,79 @@ jobs:
           echo "Found RFCs:" && cat rfc_list.txt || true
           COUNT=$(wc -l < rfc_list.txt | tr -d ' ' || echo 0)
           echo "Found ${COUNT:-0} RFC file(s)"
+          FILES=$(paste -sd, rfc_list.txt || true)
+          echo "files=${FILES}" >> "$GITHUB_OUTPUT"
+
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create missing RFC implementation issues
+        if: ${{ steps.list.outputs.files != '' }}
+        uses: actions/github-script@v7
+        env:
+          FILES: ${{ steps.list.outputs.files }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const filesCsv = process.env.FILES || '';
+            const files = filesCsv.split(',').map(s => s.trim()).filter(Boolean);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            async function ensureLabel(name, color, description) {
+              try { await github.rest.issues.getLabel({ owner, repo, name }); }
+              catch {
+                try { await github.rest.issues.createLabel({ owner, repo, name, color, description }); }
+                catch (e) { core.warning(`ensureLabel(${name}) failed or exists: ${e.message}`); }
+              }
+            }
+            await ensureLabel('rfc-implementation','5319e7','Implementation tracked from RFC');
+            await ensureLabel('agent-work','1D76DB','Work authored by an AI agent');
+            await ensureLabel('ai-review-requested','8a2be2','AI review requested');
+            async function issueExists(rfcNumber) {
+              const q = `repo:${owner}/${repo} in:title RFC${rfcNumber} type:issue state:open`;
+              const res = await github.rest.search.issuesAndPullRequests({ q });
+              return res.data.items.some(it => new RegExp(`\\bRFC${rfcNumber}\\b`).test(it.title));
+            }
+            for (const file of files) {
+              const base = file.split('/').pop();
+              const m = base.match(/^RFC(\d{3})-(.+)\.md$/);
+              if (!m) continue;
+              const rfcNumber = m[1];
+              const titleText = m[2].replace(/-/g, ' ');
+              const issueTitle = `RFC${rfcNumber}: ${titleText} - Implementation`;
+              if (await issueExists(rfcNumber)) {
+                core.info(`Open issue already exists for RFC${rfcNumber}.`);
+                continue;
+              }
+              const body = [
+                `This issue tracks implementation of RFC${rfcNumber}.`,
+                '',
+                `- RFC document: [${base}](./docs/RFC/${base})`,
+                '- Labels: rfc-implementation, agent-work, ai-review-requested',
+                '',
+                'Acceptance Criteria:',
+                '- Satisfy all RFC acceptance criteria',
+                '- Tests implemented and passing',
+                '- Integrates with existing systems as specified'
+              ].join('\n');
+              let attempt=0, lastErr;
+              while (attempt < 3) {
+                try {
+                  await github.rest.issues.create({ owner, repo, title: issueTitle, body, labels: ['rfc-implementation','agent-work','ai-review-requested'] });
+                  core.info(`Created issue: ${issueTitle}`);
+                  lastErr=null; break;
+                } catch (e) {
+                  lastErr=e; attempt++; core.warning(`issues.create failed (attempt ${attempt}): ${e.message}`);
+                  await new Promise(r=>setTimeout(r, 1000*attempt));
+                }
+              }
+              if (lastErr) core.setFailed(`Failed to create issue for RFC${rfcNumber}: ${lastErr.message}`);
+            }
+
       - name: Echo success
         run: |
           echo "Reconcile workflow minimal job OK"
