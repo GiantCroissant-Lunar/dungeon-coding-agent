@@ -21,7 +21,7 @@ jobs:
     name: Check for 'ai-review' label
     runs-on: ubuntu-latest
     steps:
-      - name: Ensure Gemini review label present
+      - name: Ensure Gemini review label present and post required status
         id: ensure-label
         run: |
           NUMBER='${{ github.event.pull_request.number }}'
@@ -29,15 +29,20 @@ jobs:
           echo "Labels: $LABELS"
           # Honor bypass for infra/docs-only PRs
           CSV=",$LABELS,"
+          SHA='${{ github.event.pull_request.head.sha }}'
+          CONTEXT="Require Gemini AI Review / Check for 'ai-review' label"
           if echo "$CSV" | grep -q ',skip-rfc-check,'; then
             echo "Bypass active (skip-rfc-check present). Passing without requiring ai-review."
+            gh api repos/:owner/:repo/statuses/"$SHA" -f state=success -f context="$CONTEXT" -f description="Bypass active (skip-rfc-check)" || true
             exit 0
           fi
           if echo "$CSV" | grep -q ',ai-review,'; then
             echo "Gemini AI review label present."
+            gh api repos/:owner/:repo/statuses/"$SHA" -f state=success -f context="$CONTEXT" -f description="ai-review label present" || true
             exit 0
           fi
           echo "Missing required 'ai-review' label. Trigger a Gemini review (e.g., comment /gemini review) or wait for the app to complete."
+          gh api repos/:owner/:repo/statuses/"$SHA" -f state=failure -f context="$CONTEXT" -f description="Missing ai-review label" || true
           exit 1
         env:
           GH_TOKEN: ${{ github.token }}
