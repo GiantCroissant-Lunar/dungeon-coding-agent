@@ -30,6 +30,12 @@ jobs:
   assign:
     runs-on: ubuntu-latest
     steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -49,7 +55,7 @@ jobs:
           fi
           echo "ids=$IDS" >> $GITHUB_OUTPUT
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Assign/label/comment issues
         run: |
@@ -100,4 +106,4 @@ EOF
             fi
           done
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

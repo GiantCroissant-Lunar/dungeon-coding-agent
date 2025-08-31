@@ -27,6 +27,13 @@ jobs:
         fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
         
+    - name: Get GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
@@ -139,8 +146,8 @@ jobs:
         if echo "$LABELS" | grep -q '\bai-review\b'; then echo "has_ai_review=true" >> $GITHUB_OUTPUT; else echo "has_ai_review=false" >> $GITHUB_OUTPUT; fi
         if echo "$LABELS" | grep -q '\bdo-not-merge\b'; then echo "has_dnm=true" >> $GITHUB_OUTPUT; else echo "has_dnm=false" >> $GITHUB_OUTPUT; fi
       env:
-        GH_TOKEN: ${{ github.token }}
-
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        
     - name: Check code quality
       id: code-quality
       run: |
