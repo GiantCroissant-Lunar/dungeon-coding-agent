@@ -1,0 +1,19 @@
+name: One-Shot RFC Assignment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  assign:
+    name: Assign RFC issues now (capacity-aware)
+    uses: GiantCroissant-Lunar/dungeon-coding-agent/.github/workflows/assign-rfc-issues-to-agent.yml@main
+    with:
+      issue_numbers: all
+      labels: in-progress,agent-assigned
+      add_comment: true
+    secrets: inherit
