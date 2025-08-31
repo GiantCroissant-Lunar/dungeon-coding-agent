@@ -1,0 +1,29 @@
+name: Require Gemini AI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-ai-review:
+    name: Check for 'ai-review' label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure Gemini review label present
+        id: ensure-label
+        run: |
+          NUMBER='${{ github.event.pull_request.number }}'
+          LABELS=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json labels --jq '[.labels[].name] | join(",")')
+          echo "Labels: $LABELS"
+          if echo "$LABELS" | grep -q '\bai-review\b'; then
+            echo "Gemini AI review label present."
+            exit 0
+          fi
+          echo "Missing required 'ai-review' label. Trigger a Gemini review (e.g., comment /gemini review) or wait for the app to complete."
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}

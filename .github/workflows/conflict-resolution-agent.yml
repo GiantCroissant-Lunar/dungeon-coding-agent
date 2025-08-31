@@ -1,8 +1,6 @@
-name: Simple Conflict Resolution Agent
+name: Conflict Resolution Agent
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       pr_numbers:
@@ -32,10 +30,10 @@ jobs:
       run: |
         echo "Scanning for conflicted pull requests..."
         
-        INPUT_PRS="${{ github.event.inputs.pr_numbers || 'all' }}"
+        INPUT_PRS='${{ github.event.inputs.pr_numbers || 'all' }}'
         
         if [ "$INPUT_PRS" = "all" ]; then
-          CONFLICTED_PRS=$(gh pr list --state=open --json number,mergeable --jq '.[] | select(.mergeable == "CONFLICTING") | .number' | tr '\n' ',' | sed 's/,$//')
+          CONFLICTED_PRS=$(gh --repo "${{ github.repository }}" pr list --state=open --json number,mergeable --jq '.[] | select(.mergeable == "CONFLICTING") | .number' | tr '\n' ',' | sed 's/,$//')
         else
           CONFLICTED_PRS="$INPUT_PRS"
         fi
@@ -53,25 +51,12 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         
-    - name: Resolve Copilot assignee login
-      id: resolve
-      run: |
-        echo "Resolving Copilot assignee login..."
-        CANDIDATE=$(gh api repos/${{ github.repository }}/assignees --jq '.[] | select((.login|ascii_downcase)=="copilot" or (.login|test("copilot"; "i"))) | .login' | head -n1)
-        if [ -z "$CANDIDATE" ]; then
-          echo " Could not find a Copilot assignee for this repository. Ensure Copilot Coding Agent is enabled and has access."
-          exit 1
-        fi
-        echo "copilot_login=$CANDIDATE" >> $GITHUB_OUTPUT
-      env:
-        GH_TOKEN: ${{ github.token }}
-        
-    - name: Assign Copilot and post guidance
+    - name: Label and post guidance
       if: steps.find-conflicts.outputs.has_conflicts == 'true'
       run: |
         echo "Processing conflicted PRs..."
         
-        CONFLICTED_PRS="${{ steps.find-conflicts.outputs.conflicted_prs }}"
+        CONFLICTED_PRS='${{ steps.find-conflicts.outputs.conflicted_prs }}'
         IFS=',' read -ra PR_ARRAY <<< "$CONFLICTED_PRS"
         
         for pr_num in "${PR_ARRAY[@]}"; do
@@ -84,22 +69,29 @@ jobs:
           echo "Processing PR #$pr_num..."
           
           # Get PR details
-          PR_INFO=$(gh pr view "$pr_num" --json headRefName,author --jq '{branch: .headRefName, author: .author.login}')
+          PR_INFO=$(gh --repo "${{ github.repository }}" pr view "$pr_num" --json headRefName,author --jq '{branch: .headRefName, author: .author.login}')
           BRANCH_NAME=$(echo "$PR_INFO" | jq -r '.branch')
           PR_AUTHOR=$(echo "$PR_INFO" | jq -r '.author')
           
-          # Skip if not a Copilot PR
-          if [[ ! "$PR_AUTHOR" == *"copilot"* ]]; then
-            echo "Skipping - not a Copilot agent PR"
-            continue
-          fi
-          
-          # Assign Copilot agent (resolved dynamically)
-          echo "Assigning Copilot agent to PR #$pr_num as ${{ steps.resolve.outputs.copilot_login }}..."
-          gh pr edit "$pr_num" --add-assignee "${{ steps.resolve.outputs.copilot_login }}" || echo "Assignment may have failed or already exists"
+          # Add or ensure merge-conflict label
+          gh --repo "${{ github.repository }}" pr edit "$pr_num" --add-label "merge-conflict" || true
           
           # Post conflict resolution guidance
-          gh pr comment "$pr_num" --body "Conflict Resolution Agent - AUTOMATIC CONFLICT RESOLUTION NEEDED - This PR has merge conflicts that need to be resolved. Action Required: 1. Checkout branch: git checkout $BRANCH_NAME 2. Rebase against main: git rebase main 3. Resolve merge conflicts in the conflicted files 4. Push updated branch: git push --force-with-lease 5. Mark this PR ready for review (remove draft status) - Please work directly on this existing PR to resolve conflicts. Integration Note: Recent RFC001 merge added comprehensive game engine architecture. Ensure your changes integrate with the new GameEngine state management and ECS architecture."
+          gh --repo "${{ github.repository }}" pr comment "$pr_num" --body "🔧 Conflict Resolution Agent
+
+This pull request currently has merge conflicts with the base branch.
+
+Recommended steps:
+1. Checkout branch: \`git checkout $BRANCH_NAME\`
+2. Rebase against main: \`git fetch origin && git rebase origin/main\`
+3. Resolve conflicts locally in the files shown by Git
+4. Push updates: \`git push --force-with-lease\`
+
+Notes:
+- Keep commits small and focused.
+- If CI fails after rebasing, re-run locally and adjust.
+
+When conflicts are resolved, this label will be cleared automatically on the next run."
           
           echo "Posted guidance to PR #$pr_num"
           
