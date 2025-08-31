@@ -38,7 +38,7 @@ on:
         type: string
       add_comment:
         description: 'Add a guidance comment to each issue'
-        required: true
+        required: false
         type: boolean
         default: true
 
@@ -142,7 +142,8 @@ jobs:
             if [ "$ADD_COMMENT" = "true" ]; then
               TITLE=$(gh --repo "${{ github.repository }}" issue view "$num" --json title --jq .title)
               RFC=$(echo "$TITLE" | grep -o 'RFC[0-9]\+' || true)
-              read -r -d '' COMMENT << 'EOF'
+              TMP_FILE=$(mktemp)
+              cat > "$TMP_FILE" << 'EOF'
 Guidance for implementing this RFC:
 
 - Follow the RFC acceptance criteria and update checkboxes as you progress.
@@ -153,7 +154,8 @@ Guidance for implementing this RFC:
 
 Refer to AI-REVIEWERS.md for Gemini Code Assist usage and labels.
 EOF
-              gh --repo "${{ github.repository }}" issue comment "$num" --body "$COMMENT" || true
+              gh --repo "${{ github.repository }}" issue comment "$num" --body-file "$TMP_FILE" || true
+              rm -f "$TMP_FILE"
             fi
             CAP=$((CAP - 1))
           done
