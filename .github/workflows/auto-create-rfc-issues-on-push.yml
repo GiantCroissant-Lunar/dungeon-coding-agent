@@ -117,3 +117,13 @@ jobs:
               }
               if (lastErr) core.setFailed(`Failed to create issue for RFC${rfcNumber}: ${lastErr.message}`);
             }
+
+    assign-created-rfc-issues:
+      name: Auto-assign newly created RFC issues (capacity-aware)
+      needs: create-rfc-issues
+      uses: ./.github/workflows/assign-rfc-issues-to-agent.yml
+      with:
+        issue_numbers: all
+        labels: in-progress,agent-assigned
+        add_comment: true
+      secrets: inherit

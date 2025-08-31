@@ -98,3 +98,13 @@ jobs:
             }
         env:
           FILES: ${{ steps.list.outputs.files }}
+
+  assign-reconciled-rfc-issues:
+    name: Auto-assign reconciled RFC issues (capacity-aware)
+    needs: reconcile
+    uses: ./.github/workflows/assign-rfc-issues-to-agent.yml
+    with:
+      issue_numbers: all
+      labels: in-progress,agent-assigned
+      add_comment: true
+    secrets: inherit
