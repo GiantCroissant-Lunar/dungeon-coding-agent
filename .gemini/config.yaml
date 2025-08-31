@@ -1,0 +1,20 @@
+# Gemini Code Assist repository configuration
+# Docs: https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
+
+have_fun: false
+ignore_patterns: []
+
+code_review:
+  disable: false
+  # Only leave comments >= this severity
+  comment_severity_threshold: MEDIUM
+  # -1 means unlimited; adjust if reviews are too noisy
+  max_review_comments: -1
+
+pull_request_opened:
+  # Post a short help message on PR open (slash commands)
+  help: false
+  # Post a PR summary on open
+  summary: true
+  # Post an initial code review on open
+  code_review: true
