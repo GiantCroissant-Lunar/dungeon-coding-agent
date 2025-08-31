@@ -102,7 +102,7 @@ jobs:
   assign-reconciled-rfc-issues:
     name: Auto-assign reconciled RFC issues (capacity-aware)
     needs: reconcile
-    uses: ./.github/workflows/assign-rfc-issues-to-agent.yml
+    uses: GiantCroissant-Lunar/dungeon-coding-agent/.github/workflows/assign-rfc-issues-to-agent.yml@chore/auto-assign-rfc-capacity
     with:
       issue_numbers: all
       labels: in-progress,agent-assigned
