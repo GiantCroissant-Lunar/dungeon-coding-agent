@@ -356,6 +356,32 @@ jobs:
             console.log('⚠️ Could not submit approval review:', err.message);
           }
 
+    - name: Wait for required status check (Gemini AI Review)
+      if: steps.merge-decision.outputs.decision == 'merge'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        set -e
+        SHA='${{ github.event.pull_request.head.sha }}'
+        REQUIRED_NAME="Check for 'ai-review' label"
+        echo "Waiting for required status check: $REQUIRED_NAME on $SHA"
+        for i in $(seq 1 30); do
+          STATUS=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
+            --jq ".check_runs[] | select(.name == \"$REQUIRED_NAME\") | .status + \"/\" + (.conclusion // \"\")" || true)
+          echo "Attempt $i: $STATUS"
+          if echo "$STATUS" | grep -q "completed/success"; then
+            echo "Required check succeeded."; break
+          fi
+          sleep 5
+        done
+        # Final verification
+        STATUS=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
+          --jq ".check_runs[] | select(.name == \"$REQUIRED_NAME\") | .status + \"/\" + (.conclusion // \"\")" || true)
+        if ! echo "$STATUS" | grep -q "completed/success"; then
+          echo "Required check did not succeed in time: $STATUS" >&2
+          exit 1
+        fi
+
     - name: Auto-merge approved PRs
       if: steps.merge-decision.outputs.decision == 'merge'
       uses: actions/github-script@v7
