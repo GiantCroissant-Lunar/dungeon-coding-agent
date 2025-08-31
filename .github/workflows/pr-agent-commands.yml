@@ -1,0 +1,172 @@
+name: PR Agent Commands
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+jobs:
+  dispatch:
+    if: |
+      github.event.issue.pull_request
+      && ( contains(github.event.comment.body, '/agent ') )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Extract context
+        id: ctx
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const prNumber = context.issue.number;
+            const body = context.payload.comment.body.trim();
+            const cmd = body.split(/\s+/).slice(0, 2).join(' ');
+
+            // Fetch PR details
+            const pr = (await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            })).data;
+
+            core.setOutput('pr_number', String(prNumber));
+            core.setOutput('command', cmd);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('head_repo_full', pr.head.repo.full_name);
+            core.setOutput('is_fork', pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`);
+
+      - name: Route command
+        id: route
+        run: |
+          case "${{ steps.ctx.outputs.command }}" in
+            "/agent update-branch") echo "action=update" >> $GITHUB_OUTPUT ;;
+            "/agent resolve-conflicts") echo "action=resolve" >> $GITHUB_OUTPUT ;;
+            "/agent gemini-review") echo "action=ai-review" >> $GITHUB_OUTPUT ;;
+            *) echo "action=unknown" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Comment on unknown command
+        if: steps.route.outputs.action == 'unknown'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: Number('${{ steps.ctx.outputs.pr_number }}'),
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❓ Unknown command. Supported commands:\n- /agent update-branch\n- /agent resolve-conflicts\n- /agent gemini-review`
+            });
+
+      - name: Add/ensure Gemini review labels
+        if: steps.route.outputs.action == 'ai-review'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const pr = Number('${{ steps.ctx.outputs.pr_number }}');
+            // Ensure ai-review-requested exists on repo (best-effort)
+            try {
+              await github.rest.issues.addLabels({
+                issue_number: pr,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['ai-review-requested']
+              });
+            } catch (e) { /* ignore */ }
+
+            await github.rest.issues.createComment({
+              issue_number: pr,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🔎 Gemini review requested. Label 'ai-review-requested' applied.\nThe AI reviewer will post results and the 'ai-review' label when complete.`
+            });
+
+      - name: Trigger conflict-resolution-agent
+        if: steps.route.outputs.action == 'resolve'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'conflict-resolution-agent.yml',
+                ref: 'main',
+                inputs: { pr_numbers: String('${{ steps.ctx.outputs.pr_number }}') }
+              });
+              await github.rest.issues.createComment({
+                issue_number: Number('${{ steps.ctx.outputs.pr_number }}'),
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `🛠️ Conflict resolution agent triggered for this PR. The agent will attempt fix-in-place updates.`
+              });
+            } catch (error) {
+              await github.rest.issues.createComment({
+                issue_number: Number('${{ steps.ctx.outputs.pr_number }}'),
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `❌ Failed to trigger conflict-resolution agent: ${error.message}`
+              });
+            }
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Update branch (merge main into PR head)
+        if: steps.route.outputs.action == 'update'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -e
+          PR_NUM='${{ steps.ctx.outputs.pr_number }}'
+          HEAD_REF='${{ steps.ctx.outputs.head_ref }}'
+          HEAD_REPO='${{ steps.ctx.outputs.head_repo_full }}'
+          THIS_REPO='${{ github.repository }}'
+
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            gh issue comment "$PR_NUM" --repo "$THIS_REPO" --body "⚠️ Cannot update-branch: PR head branch is in a fork ($HEAD_REPO). Ask the author to update their branch."
+            exit 0
+          fi
+
+          git config --global user.name "gc-agent[bot]"
+          git config --global user.email "gc-agent[bot]@users.noreply.github.com"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${THIS_REPO}.git" repo
+          cd repo
+          git fetch origin
+          git checkout "$HEAD_REF"
+          git merge --no-edit origin/main || true
+
+          if git ls-files -u | grep -q .; then
+            gh pr comment "$PR_NUM" --repo "$THIS_REPO" --body "❌ Update-branch encountered merge conflicts. Triggering conflict-resolution agent."
+            gh workflow run conflict-resolution-agent.yml --repo "$THIS_REPO" -f pr_numbers="$PR_NUM" || true
+            exit 0
+          fi
+
+          if git status --porcelain | grep -q .; then
+            git push origin HEAD:"$HEAD_REF"
+            gh pr comment "$PR_NUM" --repo "$THIS_REPO" --body "✅ Branch updated with latest main (fast-forward/merge)."
+          else
+            gh pr comment "$PR_NUM" --repo "$THIS_REPO" --body "ℹ️ Branch already up to date with main."
+          fi
+
+      - name: Conclude
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            console.log('PR Agent command completed.');

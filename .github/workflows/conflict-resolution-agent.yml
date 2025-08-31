@@ -8,6 +8,8 @@ on:
         required: true
         default: 'all'
         type: string
+  schedule:
+    - cron: '30 3 * * *'
 
 permissions:
   contents: write
@@ -19,6 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Get GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
     - name: Checkout main branch
       uses: actions/checkout@v4
       with:
@@ -49,7 +58,7 @@ jobs:
         fi
         
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
         
     - name: Label and post guidance
       if: steps.find-conflicts.outputs.has_conflicts == 'true'
@@ -98,4 +107,4 @@ When conflicts are resolved, this label will be cleared automatically on the nex
         done
         
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
