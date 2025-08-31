@@ -16,6 +16,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: List RFC docs
+        id: list
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -1 docs/RFC/RFC*.md 2>/dev/null | grep -E 'docs/RFC/RFC[0-9]{3}-.+\.md' | grep -v 'docs/RFC/README.md' > rfc_list.txt || true
+          echo "Found RFCs:" && cat rfc_list.txt || true
+          COUNT=$(wc -l < rfc_list.txt | tr -d ' ' || echo 0)
+          echo "Found ${COUNT:-0} RFC file(s)"
       - name: Echo success
         run: |
           echo "Reconcile workflow minimal job OK"
