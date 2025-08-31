@@ -145,6 +145,8 @@ jobs:
         echo "mergeable_fresh=$MERGEABLE" >> $GITHUB_OUTPUT
         if echo "$LABELS" | grep -q '\bai-review\b'; then echo "has_ai_review=true" >> $GITHUB_OUTPUT; else echo "has_ai_review=false" >> $GITHUB_OUTPUT; fi
         if echo "$LABELS" | grep -q '\bdo-not-merge\b'; then echo "has_dnm=true" >> $GITHUB_OUTPUT; else echo "has_dnm=false" >> $GITHUB_OUTPUT; fi
+        if echo "$LABELS" | grep -q '\bskip-rfc-check\b'; then echo "has_skip_rfc_check=true" >> $GITHUB_OUTPUT; else echo "has_skip_rfc_check=false" >> $GITHUB_OUTPUT; fi
+        if echo "$LABELS" | grep -q '\brfc-implementation\b'; then echo "has_rfc_impl=true" >> $GITHUB_OUTPUT; else echo "has_rfc_impl=false" >> $GITHUB_OUTPUT; fi
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
         
@@ -194,6 +196,8 @@ jobs:
         QUALITY_SCORE="${{ steps.code-quality.outputs.quality_score }}"
         HAS_AI_REVIEW='${{ steps.pr-state.outputs.has_ai_review }}'
         HAS_DNM='${{ steps.pr-state.outputs.has_dnm }}'
+        HAS_SKIP='${{ steps.pr-state.outputs.has_skip_rfc_check }}'
+        HAS_RFC_IMPL='${{ steps.pr-state.outputs.has_rfc_impl }}'
         
         # Check if PR has merge conflicts (fresh read)
         PR_MERGEABLE='${{ steps.pr-state.outputs.mergeable_fresh }}'
@@ -202,6 +206,13 @@ jobs:
         # Merge criteria
         CAN_MERGE=true
         REASONS=()
+
+        # Determine if RFC completion gate should be bypassed
+        SKIP_RFC_GATE=false
+        if [ "$HAS_SKIP" = "true" ] || [ "$HAS_RFC_IMPL" != "true" ]; then
+          SKIP_RFC_GATE=true
+          echo "Bypassing RFC completion gate (HAS_SKIP=$HAS_SKIP, HAS_RFC_IMPL=$HAS_RFC_IMPL)"
+        fi
         
         # Check for merge conflicts first
         if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
@@ -219,9 +230,13 @@ jobs:
           REASONS+=("Tests failing")
         fi
         
-        if [ "$COMPLETION_PCT" -lt 80 ]; then
-          CAN_MERGE=false
-          REASONS+=("RFC only $COMPLETION_PCT% complete")
+        if [ "$SKIP_RFC_GATE" != true ]; then
+          if [ "$COMPLETION_PCT" -lt 80 ]; then
+            CAN_MERGE=false
+            REASONS+=("RFC only $COMPLETION_PCT% complete")
+          fi
+        else
+          echo "RFC completion threshold skipped."
         fi
         
         if [ "$QUALITY_SCORE" -lt 70 ]; then
