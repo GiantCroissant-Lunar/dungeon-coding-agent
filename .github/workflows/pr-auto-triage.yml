@@ -22,8 +22,8 @@ jobs:
       - name: Ensure labels exist
         run: |
           # Create labels if they don't exist
-          gh label create copilot-pr --color FF7F50 --description "PR authored by GitHub Copilot agent" 2>/dev/null || echo "label copilot-pr exists"
-          gh label create agent-work --color 1D76DB --description "Work authored by an AI agent" 2>/dev/null || echo "label agent-work exists"
+          gh --repo "${{ github.repository }}" label create copilot-pr --color FF7F50 --description "PR authored by GitHub Copilot agent" 2>/dev/null || echo "label copilot-pr exists"
+          gh --repo "${{ github.repository }}" label create agent-work --color 1D76DB --description "Work authored by an AI agent" 2>/dev/null || echo "label agent-work exists"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -39,14 +39,14 @@ jobs:
           # Add label if authored by Copilot (case-insensitive contains)
           if echo "$AUTHOR" | grep -iq copilot; then
             echo "Adding 'copilot-pr' label..."
-            gh pr edit "$NUMBER" --add-label copilot-pr || true
+            gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label copilot-pr || true
             echo "Adding 'agent-work' label..."
-            gh pr edit "$NUMBER" --add-label agent-work || true
+            gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label agent-work || true
           else
             # For other agent/bot authors, apply 'agent-work'
-            if echo "$TYPE" | grep -iq "bot" || echo "$AUTHOR" | grep -Eiq '(agent|bot|ai)'; then
+            if echo "$TYPE" | grep -iq "bot" || echo "$AUTHOR" | grep -Eiq '(agent|bot|ai|app\/)'; then
               echo "Adding 'agent-work' label for non-Copilot agent..."
-              gh pr edit "$NUMBER" --add-label agent-work || true
+              gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label agent-work || true
             fi
           fi
         env:
@@ -57,19 +57,19 @@ jobs:
         run: |
           NUMBER='${{ inputs.pr_number }}'
           echo "Fetching PR #$NUMBER details..."
-          AUTHOR=$(gh pr view "$NUMBER" --json author --jq .author.login)
-          TYPE=$(gh pr view "$NUMBER" --json author --jq '.author.__typename' 2>/dev/null || echo "")
+          AUTHOR=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json author --jq .author.login)
+          TYPE=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json author --jq '.author.__typename' 2>/dev/null || echo "")
 
           echo "PR #$NUMBER by $AUTHOR (type=$TYPE)"
 
           if echo "$AUTHOR" | grep -iq copilot; then
             echo "Adding 'copilot-pr' + 'agent-work' labels..."
-            gh pr edit "$NUMBER" --add-label copilot-pr || true
-            gh pr edit "$NUMBER" --add-label agent-work || true
+            gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label copilot-pr || true
+            gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label agent-work || true
           else
             if echo "$AUTHOR" | grep -Eiq '(agent|bot|ai|app\/)' || echo "$TYPE" | grep -iq 'Bot\|App'; then
               echo "Adding 'agent-work' label for non-Copilot agent/bot/app..."
-              gh pr edit "$NUMBER" --add-label agent-work || true
+              gh --repo "${{ github.repository }}" pr edit "$NUMBER" --add-label agent-work || true
             else
               echo "Author appears human; no agent label applied."
             fi
