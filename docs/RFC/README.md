@@ -30,6 +30,7 @@ Request for Comments (RFCs) define the technical specifications for each major s
 | RFC005 | Combat Resolution Engine | 📝 Draft | RFC001, RFC004 | ✅ Yes |
 | [RFC006](RFC006-Basic-Inventory.md) | Basic Inventory System | 📝 Draft | RFC001, RFC004 | ✅ Yes |
 | [RFC009](RFC009-Simple-Enemy-AI.md) | Simple Enemy AI | 📝 Draft | RFC001, RFC003, RFC004 | ✅ Yes |
+| [RFC011](RFC011-Field-of-View-and-Fog-of-War.md) | Field-of-View & Fog-of-War | 📝 Draft | RFC001, RFC003 | ✅ Yes |
 
 ### **Supporting Systems** (Features & Polish)
 
@@ -38,6 +39,9 @@ Request for Comments (RFCs) define the technical specifications for each major s
 | [RFC007](RFC007-Simple-UI-Messages.md) | Simple Message Log UI | 📝 Draft | RFC002 | ✅ Yes |
 | [RFC008](RFC008-Save-Game-Data.md) | Save Game Data System | 📝 Draft | RFC001 | ✅ Yes |
 | [RFC010](RFC010-Health-Status-Bar.md) | Health and Status Bar UI | 📝 Draft | RFC002, RFC004 | ✅ Yes |
+| [RFC012](RFC012-Configuration-and-Seed-Management.md) | Configuration & Seed Management | 📝 Draft | RFC001 | ✅ Yes |
+| [RFC013](RFC013-Build-CI-Quality-Gates-and-Auto-merge-Policy.md) | Build/CI Quality Gates & Auto-merge | 📝 Draft | None | ✅ Yes |
+| [RFC014](RFC014-UX-Polish-and-Accessibility.md) | UX Polish & Accessibility | 📝 Draft | RFC002 | ✅ Yes |
 
 ## 🤖 For GitHub Copilot Coding Agents
 
@@ -127,15 +131,15 @@ Unit, integration, and performance tests
 
 ### **Overall Progress**
 - **Foundation Systems**: 2/2 ready for implementation  
-- **Game Systems**: 4/5 specifications complete
-- **Supporting Systems**: 3/3 specifications complete
-- **Total RFCs**: 9/10 ready for coding agents
+- **Game Systems**: 6/6 specifications complete
+- **Supporting Systems**: 6/6 specifications complete
+- **Total RFCs**: 14/14 ready for coding agents
 
 ### **Assignment Strategy**
 1. **Start with RFC001 + RFC002** - Core foundation (can work in parallel)
 2. **Then RFC003 + RFC007 + RFC010** - Map and UI systems  
 3. **Next RFC004 + RFC006 + RFC008** - Player systems and save/load
-4. **Finally RFC009** - Enemy AI (needs player movement complete)
+4. **Finally RFC009, RFC011, RFC012, RFC013, RFC014** - Enemy AI, Field-of-View, Configuration, Build/CI, and UX Polish
 
 ### **Estimated Timeline**
 - **Week 1**: Foundation systems (RFC001, RFC002)
