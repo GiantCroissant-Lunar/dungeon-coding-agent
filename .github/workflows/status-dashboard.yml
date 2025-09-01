@@ -45,7 +45,7 @@ jobs:
           git ls-remote --heads https://github.com/${{ github.repository }}.git > /tmp/heads.txt
           BRANCHES_COPILOT=$(cat /tmp/heads.txt | grep -Ei '(copilot|feature/rfc)' | wc -l | xargs)
 
-          cat > DASHBOARD.md <<'MD'
+          cat > DASHBOARD.md <<MD
           ## 🤖 Agent Status Dashboard
 
           | Metric | Value |
@@ -62,6 +62,7 @@ jobs:
           ### Notes
           - Copilot assignee detected as: ${COPILOT_LOGIN:-<not found>}
           - This dashboard updates every 30 minutes.
+          - Generated: $(date -u)
           MD
 
           echo "done=1" >> $GITHUB_OUTPUT
