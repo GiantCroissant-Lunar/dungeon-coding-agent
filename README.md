@@ -44,13 +44,8 @@ Classic terminal-based rogue-like with:
 
 ## 🛠️ Technical Stack
 
-- **.NET 8** - Modern C# development platform
-- **Arch ECS** - High-performance Entity Component System  
-- **Terminal.Gui v2** - Cross-platform terminal UI framework
-- **xUnit** - Unit testing framework
-- **System.Text.Json** - Save/load serialization
 
-## 🏗️ Development Setup
+ This repository hosts a classic rogue-like dungeon crawler and a full GitHub Copilot Coding Agent automation setup. (AI review is advisory-only.)
 
 ```bash
 # Clone repository
