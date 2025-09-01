@@ -37,8 +37,6 @@ if [ "$ISSUE_LIST" == "auto" ]; then
     --json number,labels --jq '
       map(select(
         (.labels | map(.name) | contains(["rfc-implementation", "agent-assigned"])) and
-        (.labels | map(.name) | contains(["copilot-working"]) | not) and
-        (.labels | map(.name) | contains(["copilot-prepared"]) | not)
   (.labels | map(.name) | contains(["copilot-working"]) | not) and
   (.labels | map(.name) | contains(["copilot-prepared"]) | not)
       )) | .[].number
