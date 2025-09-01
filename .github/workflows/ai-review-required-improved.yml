@@ -1,0 +1,105 @@
+name: Require Gemini AI Review (Improved)
+
+     # Purpose:
+     # - Enforce that PRs have the `ai-review` label before proceeding.
+     # - Provide multiple bypass mechanisms for experimental/urgent workflows
+     # Complements:
+     # - `ai-review-labels.yml` which manages applying `ai-review`/`ai-review-requested` labels.
+     # - `auto-merge-coordinator.yml` which also checks labels during coordination.
+     # Note: This job is a focused, fast-fail check. Keep it, but avoid duplicating the same blocking
+     # message elsewhere to reduce noise.
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-ai-review:
+    name: Check for 'ai-review' label or bypass
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure Gemini review label present or bypass active
+        id: ensure-label
+        run: |
+          NUMBER='${{ github.event.pull_request.number }}'
+          LABELS=$(gh --repo "${{ github.repository }}" pr view "$NUMBER" --json labels --jq '[.labels[].name] | join(",")')
+          echo "PR Labels: $LABELS"
+          
+          # Convert to CSV format for easier matching
+          CSV=",$LABELS,"
+          
+          # Check for AI review completion
+          if echo "$CSV" | grep -q ',ai-review,'; then
+            echo "✅ Gemini AI review label present - proceeding"
+            exit 0
+          fi
+          
+          # ======= BYPASS MECHANISMS =======
+          
+          # 1. Infrastructure/Documentation bypass
+          if echo "$CSV" | grep -q ',skip-rfc-check,'; then
+            echo "✅ Infrastructure bypass active (skip-rfc-check) - proceeding without AI review"
+            exit 0
+          fi
+          
+          # 2. Experimental workflow bypass  
+          if echo "$CSV" | grep -q ',experimental-workflow,'; then
+            echo "✅ Experimental workflow bypass active - proceeding without AI review"
+            exit 0
+          fi
+          
+          # 3. Skip AI review bypass
+          if echo "$CSV" | grep -q ',skip-ai-review,'; then
+            echo "✅ AI review skip bypass active - proceeding without AI review"
+            exit 0
+          fi
+          
+          # 4. Urgent deployment bypass
+          if echo "$CSV" | grep -q ',urgent-deployment,'; then
+            echo "✅ Urgent deployment bypass active - proceeding without AI review"
+            exit 0
+          fi
+          
+          # 5. Admin override bypass (for repository admins)
+          if echo "$CSV" | grep -q ',admin-override,'; then
+            echo "✅ Admin override bypass active - proceeding without AI review"
+            exit 0
+          fi
+          
+          # 6. CI/CD workflow bypass
+          if echo "$CSV" | grep -q ',ci-workflow,'; then
+            echo "✅ CI/CD workflow bypass active - proceeding without AI review"
+            exit 0
+          fi
+          
+          # 7. Hotfix bypass
+          if echo "$CSV" | grep -q ',hotfix,'; then
+            echo "✅ Hotfix bypass active - proceeding without AI review"
+            exit 0
+          fi
+          
+          # ======= REQUIRE AI REVIEW =======
+          
+          echo "❌ Missing required 'ai-review' label and no bypass labels found"
+          echo ""
+          echo "To proceed, either:"
+          echo "1. 🤖 Request Gemini review: Comment '/gemini review' on this PR"
+          echo "2. 🚀 Add bypass label for experimental work:"
+          echo "   - 'experimental-workflow' for experimental changes"
+          echo "   - 'skip-ai-review' for general AI review skip"
+          echo "   - 'urgent-deployment' for urgent deployments"
+          echo "   - 'admin-override' for admin-level overrides"
+          echo "   - 'ci-workflow' for CI/CD workflow changes"
+          echo "   - 'hotfix' for critical hotfixes"
+          echo "   - 'skip-rfc-check' for infrastructure/docs changes"
+          echo ""
+          echo "Available bypass labels:"
+          echo "gh pr edit $NUMBER --add-label 'experimental-workflow'"
+          
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
