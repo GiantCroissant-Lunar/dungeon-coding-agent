@@ -47,6 +47,8 @@ jobs:
           ensure_label "rfc-implementation" "1d76db" "Issue tracks implementation work for an RFC"
           ensure_label "in-progress" "fbca04" "Work is actively in progress"
           ensure_label "agent-assigned" "0366d6" "Assigned to an automation agent/bot"
+          ensure_label "copilot-working" "5319e7" "GitHub Copilot coding agent is actively working on this issue"
+          ensure_label "agent-work" "1D76DB" "Work authored by an AI agent"
 
       - name: Summary
         run: |
@@ -58,3 +60,5 @@ jobs:
           echo "- rfc-implementation"
           echo "- in-progress"
           echo "- agent-assigned"
+          echo "- copilot-working"
+          echo "- agent-work"

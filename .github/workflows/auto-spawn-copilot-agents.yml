@@ -1,0 +1,266 @@
+name: Auto-Spawn Copilot RFC Agents
+
+on:
+  # Trigger when RFC issues are ready for implementation
+  issues:
+    types: [labeled, assigned, edited]
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      issue_numbers:
+        description: 'Comma-separated issue numbers to spawn agents for'
+        required: false
+        type: string
+        default: 'all'
+      force_spawn:
+        description: 'Force spawn even if already working'
+        required: false
+        type: boolean
+        default: false
+
+  # Schedule periodic check for ready RFCs
+  schedule:
+    - cron: '*/30 * * * *'  # Every 30 minutes
+
+env:
+  COPILOT_MAX_CAPACITY: 3
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan-and-spawn:
+    name: Scan for Ready RFCs and Spawn Copilot Agents
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find RFC issues ready for agent spawn
+        id: find-issues
+        run: |
+          set -euo pipefail
+          
+          # Check global capacity (max 3 active Copilot agents)
+          ACTIVE_COUNT=$(gh --repo "${{ github.repository }}" issue list \
+            --state open \
+            --label "copilot-working" \
+            --json number --jq 'length')
+          
+          MAX_CAPACITY=${COPILOT_MAX_CAPACITY:-3}
+          AVAILABLE_SLOTS=$((MAX_CAPACITY - ACTIVE_COUNT))
+          
+          echo "Active Copilot agents: $ACTIVE_COUNT/$MAX_CAPACITY"
+          echo "active_count=$ACTIVE_COUNT" >> $GITHUB_OUTPUT
+          echo "available_slots=$AVAILABLE_SLOTS" >> $GITHUB_OUTPUT
+          
+          if [ "$AVAILABLE_SLOTS" -le 0 ]; then
+            echo "🚫 No available capacity for new Copilot agents"
+            echo "ready_issues=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Determine which issues to process
+          INPUT_ISSUES="${{ github.event.inputs.issue_numbers }}"
+          
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "$INPUT_ISSUES" ]; then
+            if [ "$INPUT_ISSUES" == "all" ]; then
+              CANDIDATE_ISSUES=$(gh --repo "${{ github.repository }}" issue list \
+                --state open \
+                --label "rfc-implementation" \
+                --label "agent-assigned" \
+                --json number --jq '.[].number' | tr '\n' ',' | sed 's/,$//')
+            else
+              CANDIDATE_ISSUES="$INPUT_ISSUES"
+            fi
+          else
+            # Auto-discovery: find RFC issues ready for implementation
+            CANDIDATE_ISSUES=$(gh --repo "${{ github.repository }}" issue list \
+              --state open \
+              --label "rfc-implementation" \
+              --label "agent-assigned" \
+              --json number,labels --jq '
+                map(select(
+                  (.labels | map(.name) | contains(["rfc-implementation", "agent-assigned"])) and
+                  (.labels | map(.name) | contains(["copilot-working"]) | not)
+                )) | .[].number
+              ' | tr '\n' ',' | sed 's/,$//')
+          fi
+          
+          echo "Candidate issues: $CANDIDATE_ISSUES"
+          echo "ready_issues=$CANDIDATE_ISSUES" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Spawn Copilot agents for ready RFCs
+        if: steps.find-issues.outputs.ready_issues != ''
+        run: |
+          set -euo pipefail
+          
+          IFS=',' read -ra ISSUE_ARRAY <<< "${{ steps.find-issues.outputs.ready_issues }}"
+          AVAILABLE_SLOTS=${{ steps.find-issues.outputs.available_slots }}
+          FORCE_SPAWN="${{ github.event.inputs.force_spawn }}"
+          
+          SPAWNED_COUNT=0
+          
+          for issue_num in "${ISSUE_ARRAY[@]}"; do
+            issue_num=$(echo "$issue_num" | xargs)  # trim whitespace
+            [ -z "$issue_num" ] && continue
+            
+            if [ "$SPAWNED_COUNT" -ge "$AVAILABLE_SLOTS" ]; then
+              echo "🛑 Capacity limit reached. Stopping agent spawn."
+              break
+            fi
+            
+            echo "🎯 Processing issue #$issue_num"
+            
+            # Get issue details
+            ISSUE_DATA=$(gh --repo "${{ github.repository }}" issue view "$issue_num" --json title,labels,assignees)
+            ISSUE_TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
+            
+            # Extract RFC number
+            RFC_NUM=$(echo "$ISSUE_TITLE" | grep -o 'RFC[0-9]\{3\}' | head -1 || echo "")
+            if [ -z "$RFC_NUM" ]; then
+              echo "⚠️ Could not extract RFC number from: $ISSUE_TITLE"
+              continue
+            fi
+            
+            # Check if already working (unless forced)
+            HAS_WORKING_LABEL=$(echo "$ISSUE_DATA" | jq -r '.labels[].name' | grep -q "copilot-working" && echo "true" || echo "false")
+            if [ "$HAS_WORKING_LABEL" == "true" ] && [ "$FORCE_SPAWN" != "true" ]; then
+              echo "⏭️ Skipping #$issue_num - already has copilot-working label"
+              continue
+            fi
+            
+            # Find RFC file
+            RFC_FILE=$(find docs/RFC/ -name "$RFC_NUM-*.md" | head -1 || echo "")
+            if [ -z "$RFC_FILE" ]; then
+              echo "⚠️ RFC file not found for $RFC_NUM"
+              continue
+            fi
+            
+            echo "🚀 Spawning Copilot agent for #$issue_num ($RFC_NUM)"
+            
+            # Add copilot-working label
+            gh --repo "${{ github.repository }}" issue edit "$issue_num" --add-label "copilot-working"
+            
+            # Create enhanced spawn comment with RFC context
+            RFC_SUMMARY=$(head -20 "$RFC_FILE" | grep -E "^## 🎯|^## 📖" -A 3 || echo "See RFC for full details")
+            
+            cat > /tmp/copilot_spawn_comment.md << EOF
+# 🤖 GitHub Copilot Agent Spawn - $RFC_NUM Implementation
+
+@copilot You are now assigned to implement $RFC_NUM. Please follow these comprehensive instructions:
+
+## 📋 RFC Overview
+$RFC_SUMMARY
+
+**Full RFC Specification**: \`$RFC_FILE\`
+
+## 🎯 Implementation Mission
+1. **Study the complete RFC** - Read \`$RFC_FILE\` thoroughly
+2. **Create feature branch** - Use naming: \`feature/$(echo $RFC_NUM | tr '[:upper:]' '[:lower:]')-implementation\`
+3. **Follow architecture patterns** - Arch ECS + Terminal.Gui v2 as specified in AGENTS.md
+4. **Implement ALL acceptance criteria** - Complete every checkbox in the RFC
+5. **Write comprehensive tests** - Achieve >80% coverage
+6. **Create pull request** - With detailed implementation description
+
+## 🏗️ Technical Architecture (Critical)
+
+### ECS Pattern Requirements:
+- **Components**: Pure data structs only (no methods)
+- **Systems**: Logic classes inheriting \`SystemBase<World, float>\`
+- **Event Communication**: Use \`GameEvents.RaiseXXX()\` for inter-system messaging
+
+### File Organization:
+\`\`\`
+src/DungeonCodingAgent.Game/
+├── Components/     # Data structures ($RFC_NUM components)
+├── Systems/        # Game logic ($RFC_NUM systems) 
+├── UI/            # Terminal.Gui views ($RFC_NUM UI)
+├── Core/          # Events, utilities ($RFC_NUM events)
+└── Generation/    # Content generation (if applicable)
+\`\`\`
+
+### Code Example Pattern:
+\`\`\`csharp
+// Component (data only)
+public struct Position 
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+}
+
+// System (logic only)
+public class MovementSystem : SystemBase<World, float>
+{
+    public override void Update(World world, float deltaTime)
+    {
+        // Implementation following RFC specifications
+    }
+}
+\`\`\`
+
+## ✅ Definition of Done
+- [ ] All RFC acceptance criteria checkboxes completed
+- [ ] Unit tests written and passing (>80% coverage)
+- [ ] Integration tests verify compatibility with existing systems
+- [ ] Code follows established architectural patterns  
+- [ ] Terminal.Gui integration working (if UI components)
+- [ ] Event system integration complete (if applicable)
+- [ ] Pull request created with comprehensive description
+- [ ] No build warnings or errors
+
+## 📚 Essential Resources
+- **Architecture Guidelines**: \`AGENTS.md\` and \`.github/copilot-instructions.md\`
+- **RFC Specification**: \`$RFC_FILE\` (complete implementation spec)
+- **Existing Patterns**: Study current codebase for established conventions
+- **Dependencies**: Terminal.Gui 2.0.0, Arch 2.0.0, xUnit testing
+
+## 🎮 Expected Deliverable
+A complete, tested implementation of $RFC_NUM that:
+- Follows the project's ECS architecture
+- Integrates seamlessly with existing systems
+- Provides the functionality described in the RFC
+- Includes comprehensive test coverage
+- Is ready for production use in the dungeon crawler game
+
+**Start by creating your feature branch and reading the complete RFC specification. Comment your progress and ask questions as needed.**
+
+---
+*Auto-spawned by GitHub Actions - dungeon-coding-agent RFC automation system*
+EOF
+            
+            # Post the spawn comment
+            gh --repo "${{ github.repository }}" issue comment "$issue_num" --body-file /tmp/copilot_spawn_comment.md
+            
+            echo "✅ Spawned Copilot agent for issue #$issue_num ($RFC_NUM)"
+            SPAWNED_COUNT=$((SPAWNED_COUNT + 1))
+            
+            # Brief delay to avoid rate limiting
+            sleep 2
+          done
+          
+          echo "🎉 Successfully spawned $SPAWNED_COUNT Copilot agent(s)"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COPILOT_MAX_CAPACITY: 3
+
+      - name: Update spawn status
+        run: |
+          echo "## 🤖 Copilot Agent Spawn Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Active Capacity**: ${{ steps.find-issues.outputs.active_count || 0 }}/${{ env.COPILOT_MAX_CAPACITY }} agents working" >> $GITHUB_STEP_SUMMARY  
+          echo "- **Available Slots**: ${{ steps.find-issues.outputs.available_slots || 0 }} slots free" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ready Issues**: ${{ steps.find-issues.outputs.ready_issues || 'none' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
