@@ -1,0 +1,148 @@
+name: Trigger Copilot RFC Implementation
+
+# NOTE: Legacy workflow. Prefer using `Auto-Spawn Copilot RFC Agents`.
+# This workflow is restricted to manual dispatch to avoid confusion with the
+# primary auto-spawn system.
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to trigger Copilot implementation'
+        required: true
+        type: number
+      force_trigger:
+        description: 'Force trigger even if already in progress'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  trigger-copilot:
+    name: Trigger GitHub Copilot Coding Agent
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'issues' && 
+       contains(github.event.issue.labels.*.name, 'rfc-implementation') && 
+       contains(github.event.issue.labels.*.name, 'agent-assigned') &&
+       !contains(github.event.issue.labels.*.name, 'copilot-working')) ||
+      (github.event_name == 'workflow_dispatch')
+    
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Determine issue number
+        id: issue
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "number=${{ github.event.inputs.issue_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if Copilot should be triggered
+        id: check
+        run: |
+          ISSUE_NUM="${{ steps.issue.outputs.number }}"
+          
+          # Get issue details
+          ISSUE_DATA=$(gh --repo "${{ github.repository }}" issue view "$ISSUE_NUM" --json labels,title,body,assignees)
+          
+          # Check required labels
+          HAS_RFC=$(echo "$ISSUE_DATA" | jq -r '.labels[].name' | grep -q "rfc-implementation" && echo "true" || echo "false")
+          HAS_AGENT=$(echo "$ISSUE_DATA" | jq -r '.labels[].name' | grep -q "agent-assigned" && echo "true" || echo "false")
+          HAS_WORKING=$(echo "$ISSUE_DATA" | jq -r '.labels[].name' | grep -q "copilot-working" && echo "true" || echo "false")
+          
+          # Extract RFC number from title
+          RFC_NUM=$(echo "$ISSUE_DATA" | jq -r '.title' | grep -o 'RFC[0-9]\+' | head -1 || echo "")
+          
+          if [ "$HAS_RFC" != "true" ] || [ "$HAS_AGENT" != "true" ]; then
+            echo "should_trigger=false" >> $GITHUB_OUTPUT
+            echo "reason=Missing required labels (rfc-implementation and agent-assigned)" >> $GITHUB_OUTPUT
+          elif [ "$HAS_WORKING" == "true" ] && [ "${{ github.event.inputs.force_trigger }}" != "true" ]; then
+            echo "should_trigger=false" >> $GITHUB_OUTPUT  
+            echo "reason=Copilot already working (copilot-working label present)" >> $GITHUB_OUTPUT
+          elif [ -z "$RFC_NUM" ]; then
+            echo "should_trigger=false" >> $GITHUB_OUTPUT
+            echo "reason=Could not extract RFC number from issue title" >> $GITHUB_OUTPUT
+          else
+            echo "should_trigger=true" >> $GITHUB_OUTPUT
+            echo "rfc_number=$RFC_NUM" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Trigger GitHub Copilot Coding Agent
+        if: steps.check.outputs.should_trigger == 'true'
+        run: |
+          ISSUE_NUM="${{ steps.issue.outputs.number }}"
+          RFC_NUM="${{ steps.check.outputs.rfc_number }}"
+          
+          # Mark as Copilot working
+          gh --repo "${{ github.repository }}" issue edit "$ISSUE_NUM" --add-label "copilot-working"
+          
+          # Create comprehensive implementation comment to trigger Copilot
+          RFC_FILE="docs/RFC/${RFC_NUM}-*.md"
+          RFC_ACTUAL_FILE=$(find docs/RFC/ -name "${RFC_NUM}-*.md" | head -1 || echo "")
+          
+          COPILOT_COMMENT=$(cat << 'EOF'
+@copilot Please implement this RFC following the project's coding standards and architecture.
+
+## 🎯 Implementation Instructions
+
+1. **Read the RFC**: Study the complete RFC specification linked in this issue
+2. **Follow Architecture**: Use Arch ECS patterns - Components are data, Systems are logic  
+3. **Use Terminal.Gui**: All UI must use Terminal.Gui v2 framework
+4. **Write Tests**: Achieve >80% test coverage with unit and integration tests
+5. **Check Acceptance Criteria**: Complete ALL checkboxes in the RFC
+6. **Create Feature Branch**: Use `feature/rfc###-[description]` naming convention
+
+## 📋 Technical Requirements
+
+- **ECS Patterns**: Components as structs, Systems inherit from `SystemBase<World, float>`
+- **Event System**: Use `GameEvents.RaiseXXX()` for inter-system communication
+- **File Organization**: Follow `src/DungeonCodingAgent.Game/[Components|Systems|UI|Core]/` structure
+- **Testing**: Write comprehensive tests in `tests/DungeonCodingAgent.Tests/`
+- **Code Style**: Follow existing C# conventions in the codebase
+
+## 🔗 Key Resources
+
+- **Architecture Guidelines**: See `AGENTS.md` and `.github/copilot-instructions.md`
+- **RFC Document**: Check the `docs/RFC/` folder for complete specification
+- **Existing Code**: Study current patterns in the codebase
+- **Dependencies**: Terminal.Gui 2.0.0, Arch 2.0.0, xUnit for tests
+
+## ✅ Definition of Done
+
+- [ ] All RFC acceptance criteria checkboxes completed
+- [ ] Unit tests written and passing (>80% coverage)
+- [ ] Integration tests verify system works with existing code
+- [ ] Code follows project architectural patterns
+- [ ] Feature works as demonstrated in RFC
+- [ ] Pull request created with detailed description
+
+Please create a feature branch and implement this RFC completely. Comment with your progress and questions as needed.
+EOF
+)
+
+          # Post the comprehensive implementation comment
+          echo "$COPILOT_COMMENT" | gh --repo "${{ github.repository }}" issue comment "$ISSUE_NUM" --body-file -
+          
+          echo "✅ Triggered GitHub Copilot for issue #$ISSUE_NUM ($RFC_NUM)"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Log skip reason
+        if: steps.check.outputs.should_trigger == 'false'
+        run: |
+          echo "⚠️ Skipping Copilot trigger for issue #${{ steps.issue.outputs.number }}"
+          echo "Reason: ${{ steps.check.outputs.reason }}"

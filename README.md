@@ -133,3 +133,11 @@ See [docs/RFC/README.md](docs/RFC/README.md) for the complete RFC index and assi
 
 ### **For Human Developers:**
 Pick an RFC from [docs/RFC/README.md](docs/RFC/README.md) and start implementing! Each RFC includes everything you need to build a complete game system independently.
+
+## 🏛️ Public Repository Policies & Setup
+
+- License: See [LICENSE](./LICENSE)
+- Code of Conduct: See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
+- Contributing Guide: See [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Security Policy: See [SECURITY.md](./SECURITY.md)
+- GitHub App and Secrets Setup for automation: [docs/GITHUB-APP-SETUP.md](./docs/GITHUB-APP-SETUP.md)

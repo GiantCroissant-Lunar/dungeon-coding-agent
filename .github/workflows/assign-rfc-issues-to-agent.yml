@@ -46,6 +46,9 @@ permissions:
   issues: write
   contents: read
 
+env:
+  COPILOT_MAX_CAPACITY: 3
+
 jobs:
   assign:
     runs-on: ubuntu-latest
@@ -68,7 +71,8 @@ jobs:
           set -euo pipefail
           # Determine global capacity: max 3 active (rfc-implementation + agent-assigned + in-progress)
           ACTIVE=$(gh --repo "${{ github.repository }}" issue list --state open --label rfc-implementation --label agent-assigned --label in-progress --json number --jq 'length')
-          REMAINING=$((3 - ACTIVE))
+          MAX=${COPILOT_MAX_CAPACITY:-3}
+          REMAINING=$((MAX - ACTIVE))
           if [ "$REMAINING" -le 0 ]; then
             echo "capacity=0" >> $GITHUB_OUTPUT
             echo "ids=" >> $GITHUB_OUTPUT
@@ -87,6 +91,7 @@ jobs:
           echo "capacity=$REMAINING" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COPILOT_MAX_CAPACITY: 3
 
       - name: Assign/label/comment issues
         run: |
