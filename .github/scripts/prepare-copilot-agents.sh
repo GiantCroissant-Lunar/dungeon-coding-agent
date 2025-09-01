@@ -94,7 +94,7 @@ for issue_num in "${ISSUE_ARRAY[@]}"; do
   gh issue edit "$issue_num" --add-label "copilot-working"
   
   # Create enhanced preparation comment with RFC context
-  RFC_SUMMARY=$(head -20 "$RFC_FILE" | grep -E "^## " -A 3 | head -10 || echo "See RFC for full details")
+  RFC_SUMMARY=$(head -20 "$RFC_FILE" | grep -E "^## " -A 3 | head -10 | tr '\n' ' ' | head -c 200 || echo "See RFC for full details")
   
   cat > /tmp/copilot_preparation_comment.md << 'EOF'
 # GitHub Copilot Agent Ready - $RFC_NUM Implementation
@@ -157,10 +157,11 @@ This issue is fully prepared with comprehensive guidance. A Copilot coding agent
 *Auto-prepared by RFC automation system*
 EOF
 
-  # Substitute variables in the template
+  # Substitute variables in the template (escape special characters)
+  RFC_SUMMARY_ESCAPED=$(echo "$RFC_SUMMARY" | sed 's/[[\.*^$()+?{|]/\\&/g')
   sed -i "s/\$RFC_NUM/$RFC_NUM/g" /tmp/copilot_preparation_comment.md
-  sed -i "s|\$RFC_FILE|$RFC_FILE|g" /tmp/copilot_preparation_comment.md
-  sed -i "s/\$RFC_SUMMARY/$RFC_SUMMARY/g" /tmp/copilot_preparation_comment.md
+  sed -i "s|\$RFC_FILE|$RFC_FILE|g" /tmp/copilot_preparation_comment.md  
+  sed -i "s/\$RFC_SUMMARY/$RFC_SUMMARY_ESCAPED/g" /tmp/copilot_preparation_comment.md
   
   # Post the preparation comment
   gh issue comment "$issue_num" --body-file /tmp/copilot_preparation_comment.md

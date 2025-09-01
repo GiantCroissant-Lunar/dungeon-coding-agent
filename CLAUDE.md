@@ -152,6 +152,11 @@ Follow RFC boundaries - each RFC implementation should include corresponding tes
 - Acceptance criteria and test requirements
 - Integration guidelines
 
+### **Agent Operation Documentation**
+- **[COPILOT-AGENT-ACTIVATION-METHODS.md](./COPILOT-AGENT-ACTIVATION-METHODS.md)** - Proven methods for activating GitHub Copilot coding agents
+- **[CODING-AGENT-ARCHITECTURE-ANALYSIS.md](./CODING-AGENT-ARCHITECTURE-ANALYSIS.md)** - Comprehensive analysis of coding agent architecture effectiveness
+- **[RFC-MONITORING-SYSTEM-STATUS.md](./RFC-MONITORING-SYSTEM-STATUS.md)** - Complete RFC lifecycle monitoring system overview
+
 ## 🔗 Related Projects
 
 This project follows patterns established in the lunar-snake workspace:
