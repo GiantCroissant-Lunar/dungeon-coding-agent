@@ -73,9 +73,11 @@ jobs:
 
       - name: Update preparation status
         run: |
-          ACTIVE_COUNT=$(gh issue list --state open --label "copilot-working" --json number --jq 'length')
+          WORKING=$(gh issue list --state open --label "copilot-working" --json number --jq 'length')
+          PREPARED=$(gh issue list --state open --label "copilot-prepared" --json number --jq 'length')
+          ACTIVE=$((WORKING + PREPARED))
           echo "## Copilot Agent Preparation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Active Capacity**: $ACTIVE_COUNT/${{ env.COPILOT_MAX_CAPACITY }} agents working" >> $GITHUB_STEP_SUMMARY  
+          echo "- **Active Capacity**: $ACTIVE/${{ env.COPILOT_MAX_CAPACITY }} issues prepared/working (working: $WORKING, prepared: $PREPARED)" >> $GITHUB_STEP_SUMMARY  
           echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
         env:
