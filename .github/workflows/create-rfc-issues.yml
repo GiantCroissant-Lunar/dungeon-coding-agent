@@ -96,6 +96,17 @@ jobs:
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Create RFC005 - Combat System
+      run: |
+        gh --repo "${{ github.repository }}" issue create \
+          --title "Implement RFC005: Combat Resolution Engine" \
+          --body-file .github/issue-templates/rfc005-body.md \
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
         
     - name: Create RFC006 - Basic Inventory
       run: |
@@ -146,6 +157,50 @@ jobs:
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC010: Health and Status Bar UI" \
           --body-file .github/issue-templates/rfc010-body.md \
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Create RFC011 - Field-of-View and Fog-of-War
+      run: |
+        gh --repo "${{ github.repository }}" issue create \
+          --title "Implement RFC011: Field-of-View and Fog-of-War" \
+          --body-file .github/issue-templates/rfc011-body.md \
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Create RFC012 - Configuration and Seed Management
+      run: |
+        gh --repo "${{ github.repository }}" issue create \
+          --title "Implement RFC012: Configuration & Seed Management" \
+          --body-file .github/issue-templates/rfc012-body.md \
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Create RFC013 - Build/CI Quality Gates and Auto-merge
+      run: |
+        gh --repo "${{ github.repository }}" issue create \
+          --title "Implement RFC013: Build/CI Quality Gates & Auto-merge Policy" \
+          --body-file .github/issue-templates/rfc013-body.md \
+          --milestone "RFC Implementation Phase" \
+          --label rfc-implementation \
+          ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Create RFC014 - UX Polish and Accessibility
+      run: |
+        gh --repo "${{ github.repository }}" issue create \
+          --title "Implement RFC014: UX Polish & Accessibility" \
+          --body-file .github/issue-templates/rfc014-body.md \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"

@@ -47,6 +47,12 @@ jobs:
           ensure_label "rfc-implementation" "1d76db" "Issue tracks implementation work for an RFC"
           ensure_label "in-progress" "fbca04" "Work is actively in progress"
           ensure_label "agent-assigned" "0366d6" "Assigned to an automation agent/bot"
+          # Additional labels referenced by workflows/docs
+          ensure_label "copilot-prepared" "1D76DB" "Issue prepared for GitHub Copilot agent activation"
+          ensure_label "copilot-working" "1D76DB" "Issue prepared for GitHub Copilot coding agent"
+          ensure_label "copilot-pr" "FF7F50" "PR authored by GitHub Copilot agent"
+          ensure_label "skip-rfc-check" "bbbbbb" "Bypass RFC completion gate for auto-merge coordinator"
+          ensure_label "status" "0E8A16" "Status / Dashboard"
 
       - name: Summary
         run: |
@@ -58,3 +64,8 @@ jobs:
           echo "- rfc-implementation"
           echo "- in-progress"
           echo "- agent-assigned"
+          echo "- copilot-prepared"
+          echo "- copilot-working"
+          echo "- copilot-pr"
+          echo "- skip-rfc-check"
+          echo "- status"
