@@ -83,7 +83,8 @@ The system automatically creates and uses these labels:
 - `agent-work`: Indicates AI-authored work
 - `agent-assigned`: Issue assigned to AI agent
 - `ai-review-requested`: AI review requested
-- `copilot-working`: Issue prepared for Copilot coding agent
+- `copilot-prepared`: Issue prepared with detailed instructions for Copilot
+- `copilot-working`: Issue actively being worked by Copilot (set after manual activation)
 - `in-progress`: Work is actively being done
 
 ## 🎯 What Gets Prepared
@@ -125,15 +126,15 @@ gh issue view 42
 
 ### **Common Scenarios**
 
-#### **"No issues getting prepared"**
+#### "No issues getting prepared"
 - Check if issues have both `rfc-implementation` and `agent-assigned` labels
-- Verify capacity limit hasn't been reached (max 3 by default)
+- Verify capacity limit hasn't been reached (max configurable; default 3 for assignment workflow; auto-spawn uses COPILOT_MAX_CAPACITY)
 - Ensure RFC files exist in `docs/RFC/` directory
 
-#### **"Capacity limit reached"**
-- System limits to 3 simultaneous preparations by default
-- Wait for current work to complete or modify `COPILOT_MAX_CAPACITY`
-- Use `force_spawn=true` to override if needed
+#### "Capacity limit reached"
+- Assignment workflow limits to 3 simultaneous `rfc-implementation + agent-assigned + in-progress`
+- Auto-spawn capacity counts both `copilot-prepared` and `copilot-working`
+- Wait for current work to complete, raise capacity, or use `force_spawn=true`
 
 ## 🎮 Complete Example Flow
 

@@ -32,12 +32,17 @@ gh issue comment 3 --body "@copilot Please implement RFC001: Core Game Loop acco
 ```
 
 ### **Option 3: Automated Workflow (Recommended)**
+
 ```bash
-# Use the GitHub Actions workflow (assign-rfc-issues-to-copilot.yml) to assign all RFCs at once
-gh workflow run "Assign RFC Issues to Copilot" --field issue_numbers="all" --field add_comment=true
+# Use the GitHub Actions workflow to assign RFC issues (capacity-aware)
+# Actual workflow name: Assign RFC Issues to Agent
+# Tip: Quote the workflow name exactly as shown by `gh workflow list`
+
+gh workflow run "Assign RFC Issues to Agent" --field issue_numbers="all" --field add_comment=true
 
 # Or assign specific issues
-gh workflow run "Assign RFC Issues to Copilot" --field issue_numbers="3,4,5" --field add_comment=true
+
+gh workflow run "Assign RFC Issues to Agent" --field issue_numbers="3,4,5" --field add_comment=true
 ```
 
 ### **Option 4: Batch Assignment Script (dynamic assignee)**
