@@ -13,11 +13,13 @@ echo "Force spawn: $FORCE_SPAWN"
 echo "Issue list: $ISSUE_LIST" 
 echo "Max capacity: $MAX_CAPACITY"
 
-# Check global capacity (max active Copilot agents)
-ACTIVE_COUNT=$(gh issue list --state open --label "copilot-working" --json number --jq 'length')
+# Check global capacity (max active Copilot agents - includes both working and prepared)
+WORKING_COUNT=$(gh issue list --state open --label "copilot-working" --json number --jq 'length')
+PREPARED_COUNT=$(gh issue list --state open --label "copilot-prepared" --json number --jq 'length')
+ACTIVE_COUNT=$((WORKING_COUNT + PREPARED_COUNT))
 AVAILABLE_SLOTS=$((MAX_CAPACITY - ACTIVE_COUNT))
 
-echo "Active Copilot agents: $ACTIVE_COUNT/$MAX_CAPACITY"
+echo "Active Copilot agents: $ACTIVE_COUNT/$MAX_CAPACITY (working: $WORKING_COUNT, prepared: $PREPARED_COUNT)"
 echo "Available slots: $AVAILABLE_SLOTS"
 
 if [ "$AVAILABLE_SLOTS" -le 0 ]; then
@@ -35,7 +37,8 @@ if [ "$ISSUE_LIST" == "auto" ]; then
     --json number,labels --jq '
       map(select(
         (.labels | map(.name) | contains(["rfc-implementation", "agent-assigned"])) and
-        (.labels | map(.name) | contains(["copilot-working"]) | not)
+        (.labels | map(.name) | contains(["copilot-working"]) | not) and
+        (.labels | map(.name) | contains(["copilot-prepared"]) | not)
       )) | .[].number
     ' | tr '\n' ',' | sed 's/,$//')
 else
@@ -90,8 +93,8 @@ for issue_num in "${ISSUE_ARRAY[@]}"; do
   
   echo "🚀 Preparing issue for Copilot agent: #$issue_num ($RFC_NUM)"
   
-  # Add copilot-working label
-  gh issue edit "$issue_num" --add-label "copilot-working"
+  # Add preparation label (different from copilot-working to avoid circular dependency)
+  gh issue edit "$issue_num" --add-label "copilot-prepared"
   
   # Create enhanced preparation comment with RFC context
   RFC_SUMMARY=$(head -20 "$RFC_FILE" | grep -E "^## " -A 3 | head -10 | tr '\n' ' ' | head -c 200 || echo "See RFC for full details")
