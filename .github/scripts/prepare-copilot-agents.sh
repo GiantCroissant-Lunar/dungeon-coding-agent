@@ -169,6 +169,44 @@ EOF
   # Post the preparation comment
   gh issue comment "$issue_num" --body-file /tmp/copilot_preparation_comment.md
   
+  # Ensure an idempotent @copilot activation section exists in the issue body
+  TMP_BODY_FILE="/tmp/issue_body_${issue_num}.md"
+  gh issue view "$issue_num" --json body --jq .body > "$TMP_BODY_FILE" || echo "" > "$TMP_BODY_FILE"
+  if ! grep -q "<!-- copilot-activation:start -->" "$TMP_BODY_FILE"; then
+    ACT_FILE="/tmp/copilot_activation_${issue_num}.md"
+    cat > "$ACT_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please start implementing this RFC now.
+
+Context:
+- RFC file: $RFC_FILE
+- RFC: $RFC_NUM
+
+Instructions:
+- Read the complete RFC and follow the architecture patterns (Arch ECS + Terminal.Gui v2)
+- Create a feature branch: feature/$RFC_NUM-implementation
+- Implement all acceptance criteria with tests (>80% coverage)
+- Open a PR and link this issue (include "Closes #<issue>")
+
+<!-- copilot-activation:end -->
+EOF
+    # Append activation to body and update issue
+    printf "\n\n" >> "$TMP_BODY_FILE"
+    cat "$ACT_FILE" >> "$TMP_BODY_FILE"
+    gh issue edit "$issue_num" --body-file "$TMP_BODY_FILE" || true
+    # Mark as working once activation is present
+    gh issue edit "$issue_num" --add-label "copilot-working" || true
+  else
+    # If activation exists but working label missing, add it
+    HAS_WORKING=$(gh issue view "$issue_num" --json labels --jq '[.labels[].name] | index("copilot-working") // false')
+    if [ "$HAS_WORKING" = "false" ]; then
+      gh issue edit "$issue_num" --add-label "copilot-working" || true
+    fi
+  fi
+  
   echo "✅ Prepared issue #$issue_num ($RFC_NUM) for Copilot agent"
   SPAWNED_COUNT=$((SPAWNED_COUNT + 1))
   

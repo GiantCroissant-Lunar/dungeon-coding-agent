@@ -55,9 +55,21 @@ jobs:
 
     - name: Create RFC001 - Core Game Loop
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc001-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC001 according to docs/RFC/RFC001-Core-Game-Loop.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC001: Core Game Loop & State Management" \
-          --body-file .github/issue-templates/rfc001-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -66,9 +78,21 @@ jobs:
         
     - name: Create RFC002 - Terminal Application Shell
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc002-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC002 according to docs/RFC/RFC002-Terminal-Application-Shell.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC002: Terminal.Gui Application Shell" \
-          --body-file .github/issue-templates/rfc002-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -77,9 +101,21 @@ jobs:
         
     - name: Create RFC003 - Map Generation System
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc003-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC003 according to docs/RFC/RFC003-Map-Generation-System.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC003: Map Generation & Rendering System" \
-          --body-file .github/issue-templates/rfc003-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -88,9 +124,21 @@ jobs:
         
     - name: Create RFC004 - Player Movement System
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc004-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC004 according to docs/RFC/RFC004-Player-Movement-System.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC004: Player Entity & Movement System" \
-          --body-file .github/issue-templates/rfc004-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -110,9 +158,21 @@ jobs:
         
     - name: Create RFC006 - Basic Inventory
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc006-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC006 according to docs/RFC/RFC006-Basic-Inventory.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC006: Basic Inventory System" \
-          --body-file .github/issue-templates/rfc006-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -121,9 +181,21 @@ jobs:
         
     - name: Create RFC007 - Message Log UI
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc007-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC007 according to docs/RFC/RFC007-Simple-UI-Messages.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC007: Simple Message Log UI" \
-          --body-file .github/issue-templates/rfc007-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -132,9 +204,21 @@ jobs:
         
     - name: Create RFC008 - Save Game System
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc008-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC008 according to docs/RFC/RFC008-Save-Game-Data.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC008: Save Game Data System" \
-          --body-file .github/issue-templates/rfc008-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -143,9 +227,21 @@ jobs:
         
     - name: Create RFC009 - Simple Enemy AI
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc009-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC009 according to docs/RFC/RFC009-Simple-Enemy-AI.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC009: Simple Enemy AI" \
-          --body-file .github/issue-templates/rfc009-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
@@ -154,9 +250,21 @@ jobs:
         
     - name: Create RFC010 - Health Status Bar
       run: |
+        BODY_FILE=$(mktemp)
+        cat .github/issue-templates/rfc010-body.md > "$BODY_FILE"
+        if ! grep -q "<!-- copilot-activation:start -->" "$BODY_FILE"; then
+          cat >> "$BODY_FILE" << 'EOF'
+
+<!-- copilot-activation:start -->
+## 🤖 Copilot Activation
+
+@copilot Please implement RFC010 according to docs/RFC/RFC010-Health-Status-Bar.md. Create a feature branch, write tests (>80% coverage), and open a PR that includes "Closes #<issue>".
+<!-- copilot-activation:end -->
+EOF
+        fi
         gh --repo "${{ github.repository }}" issue create \
           --title "Implement RFC010: Health and Status Bar UI" \
-          --body-file .github/issue-templates/rfc010-body.md \
+          --body-file "$BODY_FILE" \
           --milestone "RFC Implementation Phase" \
           --label rfc-implementation \
           ${{ steps.assign.outputs.flag }} || echo "Issue may already exist"
