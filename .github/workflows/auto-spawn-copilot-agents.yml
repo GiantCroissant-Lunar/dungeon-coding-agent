@@ -24,7 +24,11 @@ on:
     - cron: '*/30 * * * *'  # Every 30 minutes
 
 env:
+<<<<<<< HEAD
   COPILOT_MAX_CAPACITY: 10
+=======
+  COPILOT_MAX_CAPACITY: 100
+>>>>>>> 83115e4 (fix: Increase capacity limit and fix sed parsing error in prepare script)
 
 permissions:
   issues: write
