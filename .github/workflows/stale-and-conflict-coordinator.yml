@@ -1,0 +1,81 @@
+name: Stale and Conflict Coordinator
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Find conflicted PRs and out-of-date branches
+        id: find-prs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          # Conflicted PRs
+          CONFLICTED=$(gh --repo "$REPO" pr list --state open --json number,mergeable --jq '.[] | select(.mergeable == "CONFLICTING") | .number' | tr '\n' ',' | sed 's/,$//')
+          echo "conflicted=${CONFLICTED}" >> $GITHUB_OUTPUT
+          # Out-of-date PRs (mergeable == UNKNOWN often means behind; also compare with baseRef if available)
+          UNKNOWN=$(gh --repo "$REPO" pr list --state open --json number,mergeable --jq '.[] | select(.mergeable == "UNKNOWN") | .number' | tr '\n' ',' | sed 's/,$//')
+          echo "unknown=${UNKNOWN}" >> $GITHUB_OUTPUT
+
+      - name: Label and guide conflicted PRs
+        if: steps.find-prs.outputs.conflicted != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          IFS=',' read -ra PRS <<< "${{ steps.find-prs.outputs.conflicted }}"
+          for N in "${PRS[@]}"; do
+            N=$(echo "$N" | xargs)
+            [ -z "$N" ] && continue
+            gh --repo "$REPO" pr edit "$N" --add-label merge-conflict || true
+            gh --repo "$REPO" pr edit "$N" --add-label needs-rebase || true
+            BRANCH=$(gh --repo "$REPO" pr view "$N" --json headRefName --jq .headRefName)
+            gh --repo "$REPO" pr comment "$N" --body "Merge conflicts detected. Please rebase or update branch (${BRANCH}) against main and push updates."
+          done
+
+      - name: Nudge unknown/behind PRs
+        if: steps.find-prs.outputs.unknown != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          IFS=',' read -ra PRS <<< "${{ steps.find-prs.outputs.unknown }}"
+          for N in "${PRS[@]}"; do
+            N=$(echo "$N" | xargs)
+            [ -z "$N" ] && continue
+            gh --repo "$REPO" pr edit "$N" --add-label needs-rebase || true
+            gh --repo "$REPO" pr comment "$N" --body "This PR may be behind main or awaiting mergeability analysis; consider updating the branch to refresh checks."
+          done
+
+      - name: Mark stale issues with no recent activity
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          CUTOFF=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-14d +%Y-%m-%dT%H:%M:%SZ)
+          ISSUES=$(gh --repo "$REPO" issue list --state open --json number,updatedAt,labels --jq \
+            "[.[] | select(.updatedAt < \"$CUTOFF\" and ([.labels[].name] | index(\"stale\")) | not)] | .[].number")
+          if [ -z "$ISSUES" ]; then exit 0; fi
+          echo "$ISSUES" | while read N; do
+            [ -z "$N" ] && continue
+            gh --repo "$REPO" issue edit "$N" --add-label stale || true
+            gh --repo "$REPO" issue comment "$N" --body "⏳ Marking as stale due to 14+ days of inactivity. @copilot please review whether to close, update, or proceed."
+          done

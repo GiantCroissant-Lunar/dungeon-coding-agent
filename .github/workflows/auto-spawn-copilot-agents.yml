@@ -24,7 +24,7 @@ on:
     - cron: '*/30 * * * *'  # Every 30 minutes
 
 env:
-  COPILOT_MAX_CAPACITY: 100
+  COPILOT_MAX_CAPACITY: 10
 
 permissions:
   issues: write

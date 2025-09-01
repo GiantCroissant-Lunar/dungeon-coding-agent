@@ -48,24 +48,30 @@ jobs:
           ensure_label "in-progress" "fbca04" "Work is actively in progress"
           ensure_label "agent-assigned" "0366d6" "Assigned to an automation agent/bot"
           # Additional labels referenced by workflows/docs
-          ensure_label "copilot-prepared" "1D76DB" "Issue prepared for GitHub Copilot agent activation"
-          ensure_label "copilot-working" "1D76DB" "Issue prepared for GitHub Copilot coding agent"
+          ensure_label "copilot-prepared" "c5def5" "Issue prepared for GitHub Copilot agent activation"
+          ensure_label "copilot-working" "0e8a16" "Copilot coding agent is actively working on this issue"
+          ensure_label "agent-work" "6f42c1" "Work intended for or produced by an AI agent"
+          ensure_label "stale" "cfd3d7" "Item has had no activity for a while and needs attention"
+          ensure_label "needs-rebase" "e99695" "Branch is out of date or has conflicts; rebase/update required"
           ensure_label "copilot-pr" "FF7F50" "PR authored by GitHub Copilot agent"
           ensure_label "skip-rfc-check" "bbbbbb" "Bypass RFC completion gate for auto-merge coordinator"
           ensure_label "status" "0E8A16" "Status / Dashboard"
 
       - name: Summary
         run: |
-          echo "✅ Labels synced. Standard labels now available:"
-          echo "- ai-review-requested"
-          echo "- ai-review"
-          echo "- do-not-merge"
-          echo "- merge-conflict"
-          echo "- rfc-implementation"
-          echo "- in-progress"
-          echo "- agent-assigned"
-          echo "- copilot-prepared"
-          echo "- copilot-working"
-          echo "- copilot-pr"
-          echo "- skip-rfc-check"
-          echo "- status"
+          echo "✅ Labels synced. Standard labels now available:" >> $GITHUB_STEP_SUMMARY
+          echo "- ai-review-requested" >> $GITHUB_STEP_SUMMARY
+          echo "- ai-review" >> $GITHUB_STEP_SUMMARY
+          echo "- do-not-merge" >> $GITHUB_STEP_SUMMARY
+          echo "- merge-conflict" >> $GITHUB_STEP_SUMMARY
+          echo "- rfc-implementation" >> $GITHUB_STEP_SUMMARY
+          echo "- in-progress" >> $GITHUB_STEP_SUMMARY
+          echo "- agent-assigned" >> $GITHUB_STEP_SUMMARY
+          echo "- copilot-prepared" >> $GITHUB_STEP_SUMMARY
+          echo "- copilot-working" >> $GITHUB_STEP_SUMMARY
+          echo "- agent-work" >> $GITHUB_STEP_SUMMARY
+          echo "- stale" >> $GITHUB_STEP_SUMMARY
+          echo "- needs-rebase" >> $GITHUB_STEP_SUMMARY
+          echo "- copilot-pr" >> $GITHUB_STEP_SUMMARY
+          echo "- skip-rfc-check" >> $GITHUB_STEP_SUMMARY
+          echo "- status" >> $GITHUB_STEP_SUMMARY
