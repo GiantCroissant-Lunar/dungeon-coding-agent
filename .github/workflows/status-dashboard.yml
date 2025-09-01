@@ -41,6 +41,13 @@ jobs:
           PRS_AI_REVIEW_REQ=$(gh --repo "${{ github.repository }}" pr list --state open --label ai-review-requested --json number | jq length)
           PRS_AI_REVIEWED=$(gh --repo "${{ github.repository }}" pr list --state open --label ai-review --json number | jq length)
 
+          # Agent activity analysis
+          ISSUES_COPILOT_WORKING=$(gh --repo "${{ github.repository }}" issue list --state open --label copilot-working --json number | jq length)
+          
+          # Stale work detection (no activity >24 hours)
+          STALE_PRS=$(gh --repo "${{ github.repository }}" pr list --state open --json number,author,updatedAt --jq --arg cutoff "$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ')" '[.[] | select(.author.login | test("copilot"; "i")) | select(.updatedAt < $cutoff)] | length')
+          STALE_ISSUES=$(gh --repo "${{ github.repository }}" issue list --state open --label copilot-working --json number,updatedAt --jq --arg cutoff "$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ')" '[.[] | select(.updatedAt < $cutoff)] | length')
+
           # Branches (best effort)
           git ls-remote --heads https://github.com/${{ github.repository }}.git > /tmp/heads.txt
           BRANCHES_COPILOT=$(cat /tmp/heads.txt | grep -Ei '(copilot|feature/rfc)' | wc -l | xargs)
@@ -53,14 +60,21 @@ jobs:
           | Total RFC issues (all states) | ${TOTAL_RFCS} |
           | Open RFC issues | ${OPEN_RFCS} |
           | Open RFCs assigned to Copilot | ${COPILOT_ASSIGNED} |
+          | **Issues prepared for Copilot** | ${ISSUES_COPILOT_WORKING} |
           | Open PRs (all) | ${PRS_TOTAL} |
           | Open PRs by Copilot | ${PRS_COPILOT} |
+          | **🚨 Stale Copilot PRs (>24h)** | ${STALE_PRS} |
+          | **🚨 Stale Copilot Issues (>24h)** | ${STALE_ISSUES} |
           | Open PRs with AI review requested | ${PRS_AI_REVIEW_REQ} |
           | Open PRs reviewed by AI | ${PRS_AI_REVIEWED} |
           | Remote branches (copilot/feature-rfc) | ${BRANCHES_COPILOT} |
 
+          ### ⚠️ Manual Activation Required
+          **Issues prepared but need manual "Let Copilot work on this" activation**: ${STALE_ISSUES}
+          
           ### Notes
           - Copilot assignee detected as: ${COPILOT_LOGIN:-<not found>}
+          - **CRITICAL**: Issues labeled "copilot-working" require manual activation in GitHub UI
           - This dashboard updates every 30 minutes.
           - Generated: $(date -u)
           MD
