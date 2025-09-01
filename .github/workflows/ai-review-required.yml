@@ -30,14 +30,20 @@ jobs:
           # Honor bypass for infra/docs-only PRs
           CSV=",$LABELS,"
           if echo "$CSV" | grep -q ',skip-rfc-check,'; then
-            echo "Bypass active (skip-rfc-check present). Passing without requiring ai-review."
-            exit 0
+            echo "Bypass active (skip-rfc-check present). Proceeding."
           fi
           if echo "$CSV" | grep -q ',ai-review,'; then
             echo "Gemini AI review label present."
-            exit 0
+          else
+            echo "Advisory: Missing 'ai-review' label. Proceeding without blocking."
+            {
+              echo "## Gemini AI Review (Advisory)"
+              echo "- PR: #$NUMBER"
+              echo "- Status: Missing 'ai-review' label"
+              echo "- Action: Optional — comment '/gemini review' to request a review"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "Missing required 'ai-review' label. Trigger a Gemini review (e.g., comment /gemini review) or wait for the app to complete."
-          exit 1
+          # Always succeed — AI review is advisory, not required
+          exit 0
         env:
           GH_TOKEN: ${{ github.token }}

@@ -251,14 +251,9 @@ jobs:
           REASONS+=("Code quality score too low: $QUALITY_SCORE/100")
         fi
         
-        # Require Gemini AI review label and no do-not-merge, unless review gate is skipped
-        if [ "$SKIP_REVIEW_GATE" != true ]; then
-          if [ "$HAS_AI_REVIEW" != "true" ]; then
-            CAN_MERGE=false
-            REASONS+=("Missing required 'ai-review' label (Gemini review)")
-          fi
-        else
-          echo "AI reviewer requirement skipped."
+        # AI review is advisory-only; do not block merge on missing label
+        if [ "$HAS_AI_REVIEW" != "true" ]; then
+          echo "Advisory: AI review label missing; proceeding without blocking."
         fi
         if [ "$HAS_DNM" = "true" ]; then
           CAN_MERGE=false

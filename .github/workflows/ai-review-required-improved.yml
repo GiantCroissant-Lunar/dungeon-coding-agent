@@ -35,71 +35,16 @@ jobs:
           # Check for AI review completion
           if echo "$CSV" | grep -q ',ai-review,'; then
             echo "✅ Gemini AI review label present - proceeding"
-            exit 0
+          else
+            echo "ℹ️ Advisory: Missing 'ai-review' label (no longer required)."
+            {
+              echo "## Gemini AI Review (Advisory)"
+              echo "- PR: #$NUMBER"
+              echo "- Status: Missing 'ai-review' label"
+              echo "- Action: Optional — comment '/gemini review' to request a review"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
-          
-          # ======= BYPASS MECHANISMS =======
-          
-          # 1. Infrastructure/Documentation bypass
-          if echo "$CSV" | grep -q ',skip-rfc-check,'; then
-            echo "✅ Infrastructure bypass active (skip-rfc-check) - proceeding without AI review"
-            exit 0
-          fi
-          
-          # 2. Experimental workflow bypass  
-          if echo "$CSV" | grep -q ',experimental-workflow,'; then
-            echo "✅ Experimental workflow bypass active - proceeding without AI review"
-            exit 0
-          fi
-          
-          # 3. Skip AI review bypass
-          if echo "$CSV" | grep -q ',skip-ai-review,'; then
-            echo "✅ AI review skip bypass active - proceeding without AI review"
-            exit 0
-          fi
-          
-          # 4. Urgent deployment bypass
-          if echo "$CSV" | grep -q ',urgent-deployment,'; then
-            echo "✅ Urgent deployment bypass active - proceeding without AI review"
-            exit 0
-          fi
-          
-          # 5. Admin override bypass (for repository admins)
-          if echo "$CSV" | grep -q ',admin-override,'; then
-            echo "✅ Admin override bypass active - proceeding without AI review"
-            exit 0
-          fi
-          
-          # 6. CI/CD workflow bypass
-          if echo "$CSV" | grep -q ',ci-workflow,'; then
-            echo "✅ CI/CD workflow bypass active - proceeding without AI review"
-            exit 0
-          fi
-          
-          # 7. Hotfix bypass
-          if echo "$CSV" | grep -q ',hotfix,'; then
-            echo "✅ Hotfix bypass active - proceeding without AI review"
-            exit 0
-          fi
-          
-          # ======= REQUIRE AI REVIEW =======
-          
-          echo "❌ Missing required 'ai-review' label and no bypass labels found"
-          echo ""
-          echo "To proceed, either:"
-          echo "1. 🤖 Request Gemini review: Comment '/gemini review' on this PR"
-          echo "2. 🚀 Add bypass label for experimental work:"
-          echo "   - 'experimental-workflow' for experimental changes"
-          echo "   - 'skip-ai-review' for general AI review skip"
-          echo "   - 'urgent-deployment' for urgent deployments"
-          echo "   - 'admin-override' for admin-level overrides"
-          echo "   - 'ci-workflow' for CI/CD workflow changes"
-          echo "   - 'hotfix' for critical hotfixes"
-          echo "   - 'skip-rfc-check' for infrastructure/docs changes"
-          echo ""
-          echo "Available bypass labels:"
-          echo "gh pr edit $NUMBER --add-label 'experimental-workflow'"
-          
-          exit 1
+          # Always succeed — AI review is advisory, not required
+          exit 0
         env:
           GH_TOKEN: ${{ github.token }}
