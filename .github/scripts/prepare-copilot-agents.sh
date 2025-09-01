@@ -39,6 +39,8 @@ if [ "$ISSUE_LIST" == "auto" ]; then
         (.labels | map(.name) | contains(["rfc-implementation", "agent-assigned"])) and
         (.labels | map(.name) | contains(["copilot-working"]) | not) and
         (.labels | map(.name) | contains(["copilot-prepared"]) | not)
+  (.labels | map(.name) | contains(["copilot-working"]) | not) and
+  (.labels | map(.name) | contains(["copilot-prepared"]) | not)
       )) | .[].number
     ' | tr '\n' ',' | sed 's/,$//')
 else

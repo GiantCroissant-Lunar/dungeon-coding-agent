@@ -73,6 +73,7 @@ jobs:
 
       - name: Update preparation status
         run: |
+<<<<<<< HEAD
           WORKING=$(gh issue list --state open --label "copilot-working" --json number --jq 'length')
           PREPARED=$(gh issue list --state open --label "copilot-prepared" --json number --jq 'length')
           ACTIVE=$((WORKING + PREPARED))
@@ -82,3 +83,12 @@ jobs:
           echo "- **Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+=======
+          ACTIVE_COUNT=$(gh issue list --state open --label "copilot-working" --json number --jq 'length')
+          echo "## Copilot Agent Preparation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Active Capacity**: $ACTIVE_COUNT/${{ env.COPILOT_MAX_CAPACITY }} agents working" >> $GITHUB_STEP_SUMMARY  
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+>>>>>>> c72adb7 (fix: Extract complex bash logic to separate script to resolve YAML parsing issues)
