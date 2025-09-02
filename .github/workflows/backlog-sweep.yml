@@ -1,0 +1,80 @@
+name: Backlog Sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_stale_scan:
+        description: 'Run stale/conflict coordinator'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      run_auto_spawn:
+        description: 'Run auto-spawn Copilot RFC agents'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      run_pr_triage:
+        description: 'Run PR auto-triage for all open PRs'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Stale & conflict coordination (optional)
+        if: inputs.run_stale_scan == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching Stale and Conflict Coordinator on main..."
+          gh workflow run "Stale and Conflict Coordinator" --ref main || true
+
+      - name: Auto-spawn Copilot RFC agents (optional)
+        if: inputs.run_auto_spawn == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching Auto-Spawn Copilot RFC Agents on main..."
+          gh workflow run "Auto-Spawn Copilot RFC Agents" --ref main || true
+
+      - name: PR auto-triage for all open PRs (optional)
+        if: inputs.run_pr_triage == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Fetching open PRs..."
+          PRS=$(gh --repo "$REPO" pr list --state open --json number --jq '.[].number' | tr '\n' ' ')
+          if [ -z "$PRS" ]; then
+            echo "No open PRs found."
+            exit 0
+          fi
+          echo "Dispatching triage for PRs: $PRS"
+          for n in $PRS; do
+            echo "- Triage PR #$n"
+            gh workflow run "PR Auto-Triage for Copilot" --ref main -f pr_number="$n" || true
+            sleep 0.2
+          done
+          echo "Backlog sweep triage dispatch completed."
