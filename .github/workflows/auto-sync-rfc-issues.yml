@@ -1,0 +1,32 @@
+name: Auto Sync RFC Issues
+
+on:
+  push:
+    paths:
+      - 'docs/RFC/**'
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync RFC issues
+        run: |
+          chmod +x .github/scripts/sync-rfc-issues.sh
+          .github/scripts/sync-rfc-issues.sh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
