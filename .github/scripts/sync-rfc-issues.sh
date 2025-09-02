@@ -47,9 +47,10 @@ ensure_activation_once() { # existingBody, message -> newBody
   local msg="$1"
   local start='<!-- copilot-activation:start -->'
   local end='<!-- copilot-activation:end -->'
-  # Remove any existing activation block (idempotent)
-  existing="$(awk -v RS= -v ORS= '{gsub(/<!-- copilot-activation:start -->[\s\S]*?<!-- copilot-activation:end -->/, ""); print}' <<< "$existing")"
-  printf "%s\n%s\n%s\n%s\n" "$existing" "$start" "$msg" "$end"
+  # Remove any existing activation block using an awk state machine (multiline-safe)
+  local cleaned
+  cleaned="$(awk 'BEGIN{inblk=0} /<!-- copilot-activation:start -->/{inblk=1;next} /<!-- copilot-activation:end -->/{inblk=0;next} {if(!inblk) print}' <<< "$existing")"
+  printf "%s\n%s\n%s\n%s\n" "$cleaned" "$start" "$msg" "$end"
 }
 
 in_array() { local n=$1; shift; for e in "$@"; do [[ "$e" == "$n" ]] && return 0; done; return 1; }
@@ -60,8 +61,8 @@ create_or_update_issue() {
   local marker="<!-- rfc-id: ${num} -->"
   local searchQ="label:rfc-implementation in:body \"${marker}\" repo:${REPO} state:open"
   local foundJson number existing curTitle curBody
-  foundJson="$(gh search issues --json number -q 'items[0]' -- "$searchQ" || true)"
-  number="$(jq -r '.number // empty' <<< "$foundJson" 2>/dev/null || true)"
+  foundJson="$(gh search issues --json number,title,url -- "$searchQ" || true)"
+  number="$(jq -r '.items[0].number // empty' <<< "$foundJson" 2>/dev/null || true)"
 
   local activation_msg="@copilot Please begin implementing RFC${num}. Follow the RFC acceptance criteria and open a PR linked to this issue."
 
@@ -141,8 +142,8 @@ openIssuesJson="$(gh issue list --repo "$REPO" --label rfc-implementation --stat
 count=$(jq 'length' <<< "$openIssuesJson")
 for i in $(seq 0 $((count-1))); do
   body="$(jq -r ".[${i}].body" <<< "$openIssuesJson")"
-  if [[ "$body" =~ <!--[[:space:]]rfc-id:[[:space:]]([0-9]{3,})[[:space:]]--> ]]; then
-    id="${BASH_REMATCH[1]}"
+  id="$(sed -n 's/.*<!--[[:space:]]rfc-id:[[:space:]]\([0-9]\{3,\}\)[[:space:]]-->.*/\1/p' <<< "$body")"
+  if [[ -n "$id" ]]; then
     if ! in_array "$id" "${RFC_NUMS[@]}"; then
       num="$(jq -r ".[${i}].number" <<< "$openIssuesJson")"
       gh issue close "$num" --repo "$REPO" --comment "RFC${id} file removed; closing implementation issue." >/dev/null || true
